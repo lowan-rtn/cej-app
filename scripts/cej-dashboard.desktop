@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Tableau de bord CEJ
+Comment=Ouvre le tableau de bord CEJ en application desktop
+Exec=/home/lreutin-rab-cc/scripts/run_cej_desktop.sh
+Icon=/home/lreutin-rab-cc/scripts/cej-dashboard.svg
+Terminal=false
+Categories=Office;Utility;
+StartupNotify=true
