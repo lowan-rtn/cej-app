@@ -1116,6 +1116,63 @@ INDEX_HTML = """<!doctype html>
     .agent-input-row textarea {
       min-height: 72px;
     }
+    .agent-chat {
+      display: grid;
+      gap: 8px;
+      max-height: 260px;
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      margin-bottom: 10px;
+    }
+    .agent-message {
+      width: fit-content;
+      max-width: 86%;
+      padding: 9px 11px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      color: var(--ink);
+      font-size: 13px;
+    }
+    .agent-message.user {
+      justify-self: end;
+      background: var(--accent);
+      color: var(--accent-contrast);
+      border-color: transparent;
+    }
+    .agent-message.yoki {
+      justify-self: start;
+      border-color: var(--violet-line);
+      background: linear-gradient(135deg, var(--violet-soft), var(--panel-soft));
+    }
+    .agent-proposal {
+      display: none;
+      gap: 10px;
+      margin: 10px 0;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--violet-line);
+      background: var(--panel);
+    }
+    .agent-proposal.open {
+      display: grid;
+    }
+    .agent-proposal-title {
+      font-weight: 800;
+      color: var(--ink);
+    }
+    .agent-proposal-command {
+      padding: 10px;
+      border-radius: 10px;
+      background: var(--panel-soft-2);
+      color: var(--muted);
+      font-size: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
     .agent-log {
       margin-top: 10px;
       min-height: 22px;
@@ -1340,11 +1397,21 @@ INDEX_HTML = """<!doctype html>
           </div>
           <div id="agendaNotice" class="notice" style="margin-top:14px"></div>
           <div class="agent-panel">
-            <h3>Agent local</h3>
-            <p>Commande l’interface avec une phrase claire: charger la semaine, semaine suivante, afficher parametre, deplacer “CV” au 2026-04-03, passer “CV” en done.</p>
+            <h3>Yoki</h3>
+            <p>Assistant CEJ: il peut expliquer ce qu’il propose, naviguer dans l’agenda et preparer des modifications avant validation.</p>
+            <div id="agentChat" class="agent-chat" aria-live="polite"></div>
+            <div id="agentProposal" class="agent-proposal" aria-hidden="true">
+              <div class="agent-proposal-title" id="agentProposalTitle">Proposition de Yoki</div>
+              <div id="agentProposalText" class="meta"></div>
+              <div id="agentProposalCommand" class="agent-proposal-command"></div>
+              <div class="actions" style="margin-top:0">
+                <button class="primary" id="agentConfirmBtn" type="button">Executer</button>
+                <button class="ghost" id="agentCancelBtn" type="button">Annuler</button>
+              </div>
+            </div>
             <div class="agent-input-row">
-              <textarea id="agentCommand" placeholder="Exemple: deplace l’action CV au 2026-04-03"></textarea>
-              <button class="secondary" id="agentRunBtn" type="button">Executer</button>
+              <textarea id="agentCommand" placeholder="Exemple: Yoki, peux-tu deplacer l’action CV au 2026-04-03 ?"></textarea>
+              <button class="secondary" id="agentRunBtn" type="button">Envoyer</button>
             </div>
             <div id="agentNotice" class="agent-log"></div>
           </div>
@@ -1495,6 +1562,10 @@ INDEX_HTML = """<!doctype html>
       loginNotice: document.getElementById('loginNotice'),
       agendaNotice: document.getElementById('agendaNotice'),
       agentNotice: document.getElementById('agentNotice'),
+      agentChat: document.getElementById('agentChat'),
+      agentProposal: document.getElementById('agentProposal'),
+      agentProposalText: document.getElementById('agentProposalText'),
+      agentProposalCommand: document.getElementById('agentProposalCommand'),
       themeNotice: document.getElementById('themeNotice'),
       listSummary: document.getElementById('listSummary'),
       analysisSummary: document.getElementById('analysisSummary'),
@@ -1536,6 +1607,8 @@ INDEX_HTML = """<!doctype html>
     let contextMenuState = null;
     let editingAction = null;
     let deletingAction = null;
+    let pendingAgentSuggestion = null;
+    let pendingAgentDraft = null;
     let currentActions = [];
     let selectedWeekStart = startOfWeek(new Date());
     syncWeekInputs();
@@ -1557,6 +1630,49 @@ INDEX_HTML = """<!doctype html>
 
     function setAgentNotice(ok, message) {
       setNotice(els.agentNotice, ok, message);
+    }
+
+    function addYokiMessage(role, message) {
+      if (!els.agentChat) return;
+      const bubble = document.createElement('div');
+      bubble.className = `agent-message ${role === 'user' ? 'user' : 'yoki'}`;
+      bubble.textContent = message;
+      els.agentChat.appendChild(bubble);
+      els.agentChat.scrollTop = els.agentChat.scrollHeight;
+    }
+
+    function clearAgentProposal() {
+      pendingAgentSuggestion = null;
+      els.agentProposal.classList.remove('open');
+      els.agentProposal.setAttribute('aria-hidden', 'true');
+      els.agentProposalText.textContent = '';
+      els.agentProposalCommand.textContent = '';
+    }
+
+    function showAgentProposal(suggestion) {
+      pendingAgentSuggestion = suggestion;
+      els.agentProposal.classList.add('open');
+      els.agentProposal.setAttribute('aria-hidden', 'false');
+      els.agentProposalText.textContent = suggestion.explanation || 'Yoki propose une action.';
+      els.agentProposalCommand.textContent = JSON.stringify(suggestion.command, null, 2);
+    }
+
+    function showCreateProposal(title, due, comment = '', qualification = 'EMPLOI') {
+      const suggestion = {
+        ok: true,
+        needs_confirmation: true,
+        explanation: `Je te propose de creer l'action "${title}" pour le ${due}.`,
+        command: {
+          type: 'create_action',
+          title,
+          comment,
+          due,
+          qualification,
+        },
+      };
+      addYokiMessage('yoki', suggestion.explanation);
+      showAgentProposal(suggestion);
+      return { ok: true, message: 'Yoki attend ta validation.' };
     }
 
     function normalizeHex(value, fallback) {
@@ -1824,6 +1940,202 @@ INDEX_HTML = """<!doctype html>
       const month = french[2].padStart(2, '0');
       const year = french[3].length === 2 ? `20${french[3]}` : french[3];
       return `${year}-${month}-${day}`;
+    }
+
+    function relativeDateInText(text) {
+      const normalized = normalizeSearchText(text);
+      const weekdays = [
+        ['lundi', 0],
+        ['mardi', 1],
+        ['mercredi', 2],
+        ['jeudi', 3],
+        ['vendredi', 4],
+        ['samedi', 5],
+        ['dimanche', 6],
+      ];
+      for (const [label, offset] of weekdays) {
+        if (normalized.includes(label)) return formatDateInput(addDays(selectedWeekStart, offset));
+      }
+      if (normalized.includes('aujourd hui') || normalized.includes("aujourd'hui")) return formatDateInput(new Date());
+      if (normalized.includes('demain')) return formatDateInput(addDays(new Date(), 1));
+      if (normalized.includes('hier')) return formatDateInput(addDays(new Date(), -1));
+      return null;
+    }
+
+    function dateFromText(text) {
+      return firstDateInText(text) || relativeDateInText(text);
+    }
+
+    function cleanCreateTitle(text) {
+      const cleaned = String(text || '')
+        .replace(/\\b(20\\d{2}-\\d{2}-\\d{2})\\b/g, '')
+        .replace(/\\b\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]\\d{2,4}\\b/g, '')
+        .replace(/creer|cree|crée|creation|action|pour|stp|svp|dimanche|lundi|mardi|mercredi|jeudi|vendredi|samedi|aujourd'hui|aujourd hui|demain|\\bun\\b|\\bune\\b|\\bde\\b|\\bdu\\b|\\bdes\\b|\\bd'\\b/gi, ' ')
+        .replace(/\\s+/g, ' ')
+        .trim();
+      return cleaned;
+    }
+
+    function isCreateIntent(text) {
+      const normalized = normalizeSearchText(text);
+      return normalized.includes('creer') || normalized.includes('cree') || normalized.includes('creation') || normalized.includes('ajoute') || normalized.includes('nouvelle action');
+    }
+
+    function isYes(text) {
+      const normalized = normalizeSearchText(text);
+      return /\\b(oui|ok|vas y|d accord|cree|creer|ajoute|fait|go)\\b/.test(normalized);
+    }
+
+    function inferQualification(text) {
+      const normalized = normalizeSearchText(text);
+      if (/\\b(cinema|film|musee|theatre|sport|lecture|bibliotheque|culture)\\b/.test(normalized)) return 'CULTURE_SPORT_LOISIRS';
+      if (/\\b(cv|lettre|emploi|travail|candidature|entretien|recrutement|job)\\b/.test(normalized)) return 'EMPLOI';
+      if (/\\b(formation|cours|code|auto ecole|permis|atelier)\\b/.test(normalized)) return 'FORMATION';
+      if (/\\b(citoyen|administratif|mairie|impot|caf|aide|demarche)\\b/.test(normalized)) return 'CITOYENNETE';
+      if (/\\b(logement|appartement|bail|loyer)\\b/.test(normalized)) return 'LOGEMENT';
+      if (/\\b(sante|medecin|rdv medical|psychologue)\\b/.test(normalized)) return 'SANTE';
+      return 'EMPLOI';
+    }
+
+    function qualificationHumanLabel(code) {
+      const labels = {
+        EMPLOI: 'emploi',
+        PROJET_PROFESSIONNEL: 'projet professionnel',
+        CULTURE_SPORT_LOISIRS: 'culture / sport / loisirs',
+        CITOYENNETE: 'citoyennete',
+        FORMATION: 'formation',
+        LOGEMENT: 'logement',
+        SANTE: 'sante',
+      };
+      return labels[code] || code.toLowerCase();
+    }
+
+    function looksLikeActivityQuestion(text) {
+      const normalized = normalizeSearchText(text);
+      return /(ca passe|ça passe|est ce que|peux|peut|mettre|action cej)/.test(normalized)
+        && /\\b(cinema|film|musee|sport|cv|lettre|emploi|formation|cours|code|demarche|aide|rdv|atelier|permis)\\b/.test(normalized);
+    }
+
+    function extractActivityDetails(text) {
+      const raw = String(text || '').trim();
+      const normalized = normalizeSearchText(raw);
+      let subject = raw;
+      const voirMatch = raw.match(/(?:voir|vu)\\s+(.+?)(?:\\s+(?:au|a|à|dans|chez)\\s+.+)?$/i);
+      if (voirMatch) subject = voirMatch[1].trim();
+      subject = subject
+        .replace(/^(j'ai|jai|je suis|j’etais|j'etais|été|ete|voir|vu)\\s+/i, '')
+        .replace(/\\s+/g, ' ')
+        .trim();
+      const locationMatch = raw.match(/\\b(?:au|a|à|dans|chez)\\s+([^,.]+)$/i);
+      const location = locationMatch && !/je ne sais pas|sais pas|aucun/i.test(raw) ? locationMatch[1].trim() : '';
+      return {
+        subject,
+        location,
+        unknownLocation: normalized.includes('je ne sais pas') || normalized.includes('sais pas'),
+      };
+    }
+
+    function buildActivityAction(draft) {
+      const qualification = draft.qualification || inferQualification(draft.activityText || draft.details || '');
+      const details = extractActivityDetails(draft.details || draft.activityText || '');
+      const subject = details.subject || draft.activityText || 'activite realisee';
+      let title = subject;
+      let comment = '';
+      if (qualification === 'CULTURE_SPORT_LOISIRS' && /cinema|film|voir|vu/i.test(`${draft.activityText} ${draft.details}`)) {
+        title = `Sortie cinema - ${subject}`;
+        comment = `Sortie culturelle au cinema pour voir "${subject}".`;
+        if (details.location) comment += ` Lieu: ${details.location}.`;
+        if (details.unknownLocation) comment += ' Lieu non precise.';
+      } else {
+        title = subject.length > 52 ? subject.slice(0, 49) + '...' : subject;
+        comment = draft.details || draft.activityText || subject;
+      }
+      return {
+        title,
+        comment,
+        due: draft.due || formatDateInput(new Date()),
+        qualification,
+      };
+    }
+
+    function titleLooksUsable(title) {
+      const normalized = normalizeSearchText(title);
+      if (normalized.length < 3) return false;
+      const weakTitles = new Set(['test', 'tes t', 'tache', 'truc', 'action', 'un', 'une']);
+      return !weakTitles.has(normalized);
+    }
+
+    function mergePendingCreateDraft(message) {
+      const trimmed = String(message || '').trim();
+      const due = dateFromText(trimmed);
+      const title = cleanCreateTitle(trimmed);
+
+      if (pendingAgentDraft?.type === 'activity_action') {
+        if (pendingAgentDraft.step === 'ask_create') {
+          if (!isYes(trimmed)) {
+            pendingAgentDraft = null;
+            addYokiMessage('yoki', 'Ok, je ne cree rien. Si tu veux la noter plus tard, redemande-moi.');
+            return { ok: true, message: '' };
+          }
+          pendingAgentDraft.step = 'ask_details';
+          addYokiMessage('yoki', 'Ok. Donne-moi juste le detail principal: quoi exactement, et le lieu si tu l’as.');
+          return { ok: true, message: 'Yoki attend les details.' };
+        }
+        if (pendingAgentDraft.step === 'ask_details') {
+          pendingAgentDraft.details = trimmed;
+          const action = buildActivityAction(pendingAgentDraft);
+          pendingAgentDraft = null;
+          return showCreateProposal(action.title, action.due, action.comment, action.qualification);
+        }
+      }
+
+      if (looksLikeActivityQuestion(trimmed)) {
+        const qualification = inferQualification(trimmed);
+        const dueFromText = due || formatDateInput(new Date());
+        pendingAgentDraft = {
+          type: 'activity_action',
+          step: 'ask_create',
+          activityText: trimmed,
+          due: dueFromText,
+          qualification,
+        };
+        addYokiMessage('yoki', `Oui, ca peut passer en action CEJ dans "${qualificationHumanLabel(qualification)}". Tu veux que je prepare une action pour le ${dueFromText} ?`);
+        return { ok: true, message: 'Yoki attend ta confirmation.' };
+      }
+
+      if (pendingAgentDraft?.type === 'create_action' && !isCreateIntent(trimmed)) {
+        const mergedTitle = titleLooksUsable(title) ? title : trimmed;
+        const mergedDue = due || pendingAgentDraft.due;
+        if (titleLooksUsable(mergedTitle) && mergedDue) {
+          pendingAgentDraft = null;
+          return showCreateProposal(mergedTitle, mergedDue);
+        }
+      }
+
+      if (!isCreateIntent(trimmed)) return null;
+
+      if (titleLooksUsable(title) && due) {
+        pendingAgentDraft = null;
+        return showCreateProposal(title, due);
+      }
+
+      pendingAgentDraft = {
+        type: 'create_action',
+        title: titleLooksUsable(title) ? title : '',
+        due: due || '',
+      };
+
+      if (!pendingAgentDraft.title && pendingAgentDraft.due) {
+        addYokiMessage('yoki', `J'ai la date (${pendingAgentDraft.due}). Quel titre veux-tu donner a l'action ?`);
+        return { ok: true, message: 'Yoki attend le titre.' };
+      }
+      if (pendingAgentDraft.title && !pendingAgentDraft.due) {
+        addYokiMessage('yoki', `J'ai le titre "${pendingAgentDraft.title}". Pour quelle date ?`);
+        return { ok: true, message: 'Yoki attend la date.' };
+      }
+
+      addYokiMessage('yoki', 'Je peux creer une action. Donne-moi au moins un titre et une date.');
+      return { ok: true, message: 'Yoki attend les details.' };
     }
 
     function extractQuotedText(text) {
@@ -2154,19 +2466,34 @@ INDEX_HTML = """<!doctype html>
       const trimmed = String(message || '').trim();
       if (!trimmed) return { ok: false, error: 'Commande vide.' };
 
+      const localDraftResult = mergePendingCreateDraft(trimmed);
+      if (localDraftResult) return localDraftResult;
+
       try {
         const suggestion = await suggestAgentCommand(trimmed);
         if (suggestion.ok) {
           const explanation = suggestion.explanation || 'Commande proposee par l’IA.';
-          if (suggestion.needs_confirmation && !window.confirm(`${explanation}\n\nExecuter cette action ?`)) {
-            return { ok: false, error: 'Execution annulee.' };
+          addYokiMessage('yoki', explanation);
+          if (suggestion.needs_confirmation) {
+            showAgentProposal(suggestion);
+            return { ok: true, message: 'Yoki attend ta validation.' };
           }
+          clearAgentProposal();
           return executeAgentCommand(suggestion.command);
         }
         const fallback = await executeAgentText(trimmed);
-        return fallback.ok ? fallback : suggestion;
+        if (fallback.ok) {
+          addYokiMessage('yoki', fallback.message || 'Commande executee.');
+          clearAgentProposal();
+          return fallback;
+        }
+        addYokiMessage('yoki', suggestion.error || 'Je ne peux pas faire cette action de façon fiable.');
+        return suggestion;
       } catch (error) {
-        return executeAgentText(trimmed);
+        const fallback = await executeAgentText(trimmed);
+        addYokiMessage('yoki', fallback.ok ? (fallback.message || 'Commande executee.') : (fallback.error || 'Je ne comprends pas encore cette demande.'));
+        clearAgentProposal();
+        return fallback;
       }
     }
 
@@ -2440,9 +2767,37 @@ INDEX_HTML = """<!doctype html>
 
     document.getElementById('agentRunBtn').addEventListener('click', async () => {
       const input = document.getElementById('agentCommand');
-      setAgentNotice(true, 'IA en cours...');
-      const result = await runAgentFromInput(input.value);
-      setAgentNotice(result.ok, result.ok ? (result.message || 'Commande executee.') : (result.error || 'Commande refusee.'));
+      const message = input.value.trim();
+      if (!message) return;
+      addYokiMessage('user', message);
+      input.value = '';
+      clearAgentProposal();
+      setAgentNotice(true, 'Yoki reflechit...');
+      const result = await runAgentFromInput(message);
+      setAgentNotice(result.ok, result.ok ? (result.message || '') : (result.error || 'Commande refusee.'));
+    });
+
+    document.getElementById('agentCommand').addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        document.getElementById('agentRunBtn').click();
+      }
+    });
+
+    document.getElementById('agentConfirmBtn').addEventListener('click', async () => {
+      if (!pendingAgentSuggestion?.command) return;
+      const command = pendingAgentSuggestion.command;
+      clearAgentProposal();
+      setAgentNotice(true, 'Execution en cours...');
+      const result = await executeAgentCommand(command);
+      addYokiMessage('yoki', result.ok ? (result.message || 'Action executee.') : (result.error || 'Execution impossible.'));
+      setAgentNotice(result.ok, result.ok ? '' : (result.error || 'Execution impossible.'));
+    });
+
+    document.getElementById('agentCancelBtn').addEventListener('click', () => {
+      clearAgentProposal();
+      addYokiMessage('yoki', 'Action annulee. Je ne modifie rien.');
+      setAgentNotice(true, '');
     });
 
     document.getElementById('prevWeekBtn').addEventListener('click', async () => {

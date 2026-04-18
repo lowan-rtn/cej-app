@@ -44,3 +44,15 @@ wrangler dev
 cd worker
 wrangler deploy
 ```
+
+## Modele IA
+
+Le modele est configurable dans `wrangler.toml` via `AI_MODEL`.
+
+Modele actuel:
+
+```toml
+AI_MODEL = "@cf/zai-org/glm-4.7-flash"
+```
+
+Si Yoki manque de precision, tester un modele instruct plus recent ou plus grand disponible dans Workers AI, puis redeployer.
