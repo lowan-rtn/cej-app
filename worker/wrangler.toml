@@ -1,0 +1,6 @@
+name = "cej-app-ai"
+main = "src/index.js"
+compatibility_date = "2026-04-18"
+
+[ai]
+binding = "AI"

@@ -1088,6 +1088,40 @@ INDEX_HTML = """<!doctype html>
     .notice.error {
       color: var(--danger);
     }
+    .agent-panel {
+      margin-top: 16px;
+      border: 1px solid var(--violet-line);
+      border-radius: 14px;
+      padding: 14px;
+      background:
+        linear-gradient(135deg, rgba(110, 86, 207, 0.12), transparent 62%),
+        var(--panel-soft);
+    }
+    .agent-panel h3 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: -0.01em;
+    }
+    .agent-panel p {
+      margin: 4px 0 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .agent-input-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+    }
+    .agent-input-row textarea {
+      min-height: 72px;
+    }
+    .agent-log {
+      margin-top: 10px;
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 13px;
+    }
     .week-card {
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -1305,6 +1339,15 @@ INDEX_HTML = """<!doctype html>
             <button class="ghost" id="quickCreateBtn">Creer une action</button>
           </div>
           <div id="agendaNotice" class="notice" style="margin-top:14px"></div>
+          <div class="agent-panel">
+            <h3>Agent local</h3>
+            <p>Commande l’interface avec une phrase claire: charger la semaine, semaine suivante, afficher parametre, deplacer “CV” au 2026-04-03, passer “CV” en done.</p>
+            <div class="agent-input-row">
+              <textarea id="agentCommand" placeholder="Exemple: deplace l’action CV au 2026-04-03"></textarea>
+              <button class="secondary" id="agentRunBtn" type="button">Executer</button>
+            </div>
+            <div id="agentNotice" class="agent-log"></div>
+          </div>
           <div id="listSummary" class="meta" style="margin-top:8px"></div>
           <div id="calendarGrid" class="calendar" style="margin-top:14px"></div>
           <div id="analysisSummary" class="analysis-summary" style="margin-top:18px"></div>
@@ -1451,6 +1494,7 @@ INDEX_HTML = """<!doctype html>
       sessionMeta: document.getElementById('sessionMeta'),
       loginNotice: document.getElementById('loginNotice'),
       agendaNotice: document.getElementById('agendaNotice'),
+      agentNotice: document.getElementById('agentNotice'),
       themeNotice: document.getElementById('themeNotice'),
       listSummary: document.getElementById('listSummary'),
       analysisSummary: document.getElementById('analysisSummary'),
@@ -1482,6 +1526,7 @@ INDEX_HTML = """<!doctype html>
     const weekdayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
     const weeklyTargetHours = 15;
     const hoursPerAction = 2;
+    const aiSuggestEndpoint = 'https://cej-app-ai.lowan-rabille64.workers.dev/suggest';
     const defaultTheme = {
       darkMode: false,
       primary: '#174a7c',
@@ -1491,6 +1536,7 @@ INDEX_HTML = """<!doctype html>
     let contextMenuState = null;
     let editingAction = null;
     let deletingAction = null;
+    let currentActions = [];
     let selectedWeekStart = startOfWeek(new Date());
     syncWeekInputs();
 
@@ -1507,6 +1553,10 @@ INDEX_HTML = """<!doctype html>
       if (!el) return;
       el.textContent = message || '';
       el.className = `notice${message ? (ok ? ' ok' : ' error') : ''}`;
+    }
+
+    function setAgentNotice(ok, message) {
+      setNotice(els.agentNotice, ok, message);
     }
 
     function normalizeHex(value, fallback) {
@@ -1740,6 +1790,58 @@ INDEX_HTML = """<!doctype html>
       return parsed.toISOString().slice(0, 10);
     }
 
+    function normalizeSearchText(value) {
+      return String(value || '')
+        .normalize('NFD')
+        .replace(/[\\u0300-\\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+    }
+
+    function findActionCandidates(query) {
+      const needle = normalizeSearchText(query);
+      if (!needle) return [];
+      return currentActions.filter(action => {
+        const haystack = normalizeSearchText(`${action.content || ''} ${action.comment || ''} ${action.id || ''}`);
+        return haystack.includes(needle);
+      });
+    }
+
+    function requireSingleAction(query) {
+      const matches = findActionCandidates(query);
+      if (matches.length === 1) return { ok: true, action: matches[0] };
+      if (matches.length === 0) return { ok: false, error: `Aucune action ne correspond a "${query}".` };
+      return { ok: false, error: `${matches.length} actions correspondent a "${query}". Precise le titre ou l'identifiant.` };
+    }
+
+    function firstDateInText(text) {
+      const value = String(text || '');
+      const iso = value.match(/\\b(20\\d{2}-\\d{2}-\\d{2})\\b/);
+      if (iso) return iso[1];
+      const french = value.match(/\\b(\\d{1,2})[\\/.-](\\d{1,2})[\\/.-](\\d{2,4})\\b/);
+      if (!french) return null;
+      const day = french[1].padStart(2, '0');
+      const month = french[2].padStart(2, '0');
+      const year = french[3].length === 2 ? `20${french[3]}` : french[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    function extractQuotedText(text) {
+      const match = String(text || '').match(/["“”'‘’]([^"“”'‘’]{2,})["“”'‘’]/);
+      return match ? match[1].trim() : '';
+    }
+
+    function actionToClient(action) {
+      return {
+        id: action.id,
+        title: action.content || '',
+        comment: action.comment || '',
+        date: normalizeActionDate(action),
+        status: action.status || 'not_started',
+        qualification: action.qualification?.code || 'EMPLOI',
+      };
+    }
+
     function categoryLabel(action) {
       return action.qualification?.code || 'Sans categorie';
     }
@@ -1852,6 +1954,52 @@ INDEX_HTML = """<!doctype html>
       }
     }
 
+    async function moveActionByQuery(query, targetDate) {
+      if (!targetDate) return { ok: false, error: 'Date cible manquante.' };
+      const match = requireSingleAction(query);
+      if (!match.ok) return match;
+      const result = await api('/api/update-action', { id: match.action.id, due: targetDate });
+      if (!result.ok) return { ok: false, error: result?.error || 'Echec du deplacement.' };
+      await loadCurrentWeek(false);
+      return { ok: true, message: `Action "${match.action.content || match.action.id}" deplacee au ${targetDate}.` };
+    }
+
+    async function updateActionByQuery(query, changes) {
+      const match = requireSingleAction(query);
+      if (!match.ok) return match;
+      const payload = { id: match.action.id };
+      const allowedKeys = new Set(['status', 'title', 'comment', 'due', 'qualification', 'date_fin_reelle']);
+      for (const [key, value] of Object.entries(changes || {})) {
+        if (allowedKeys.has(key) && typeof value === 'string' && value.trim()) payload[key] = value.trim();
+      }
+      if (Object.keys(payload).length === 1) return { ok: false, error: 'Aucune modification exploitable.' };
+      const result = await api('/api/update-action', payload);
+      if (!result.ok) return { ok: false, error: result?.error || 'Echec de modification.' };
+      await loadCurrentWeek(false);
+      return { ok: true, message: `Action "${match.action.content || match.action.id}" modifiee.` };
+    }
+
+    async function createActionFromAgent(action) {
+      const result = await api('/api/create', {
+        title: action?.title || action?.content || '',
+        comment: action?.comment || '',
+        due: action?.due || action?.date || formatDateInput(selectedWeekStart),
+        qualification: action?.qualification || 'EMPLOI',
+      });
+      if (!result.ok) return { ok: false, error: result?.error || 'Echec de creation.' };
+      await loadCurrentWeek(false);
+      return { ok: true, message: 'Action creee.' };
+    }
+
+    async function deleteActionByQuery(query) {
+      const match = requireSingleAction(query);
+      if (!match.ok) return match;
+      const result = await api('/api/delete-action', { id: match.action.id });
+      if (!result.ok) return { ok: false, error: result?.error || 'Echec de suppression.' };
+      await loadCurrentWeek(false);
+      return { ok: true, message: `Action "${match.action.content || match.action.id}" supprimee.` };
+    }
+
     function editAction(action) {
       editingAction = action;
       els.editTitle.value = action.content || '';
@@ -1891,6 +2039,137 @@ INDEX_HTML = """<!doctype html>
       applyUnauthorizedState(result);
     }
 
+    async function executeAgentCommand(command) {
+      if (typeof command === 'string') return executeAgentText(command);
+      if (!command || typeof command !== 'object') return { ok: false, error: 'Commande agent invalide.' };
+
+      const type = command.type || command.action;
+      if (type === 'show_agenda') {
+        switchSection('agendaSection');
+        return { ok: true, message: 'Agenda affiche.' };
+      }
+      if (type === 'show_settings') {
+        switchSection('loginSection');
+        return { ok: true, message: 'Parametres affiches.' };
+      }
+      if (type === 'load_week') {
+        switchSection('agendaSection');
+        await loadCurrentWeek(false);
+        return { ok: true, message: 'Semaine chargee.' };
+      }
+      if (type === 'analyze_week') {
+        switchSection('agendaSection');
+        await loadCurrentWeek(true);
+        return { ok: true, message: 'Analyse lancee.' };
+      }
+      if (type === 'week_offset') {
+        selectedWeekStart = addDays(selectedWeekStart, Number(command.offset || 0) * 7);
+        syncWeekInputs();
+        await loadCurrentWeek(false);
+        return { ok: true, message: 'Semaine changee.' };
+      }
+      if (type === 'current_week') {
+        selectedWeekStart = startOfWeek(new Date());
+        syncWeekInputs();
+        await loadCurrentWeek(false);
+        return { ok: true, message: 'Semaine actuelle affichee.' };
+      }
+      if (type === 'move_action') return moveActionByQuery(command.query || command.title || command.id, command.due || command.date);
+      if (type === 'update_action') return updateActionByQuery(command.query || command.title || command.id, command.changes || command);
+      if (type === 'create_action') return createActionFromAgent(command);
+      if (type === 'delete_action') return deleteActionByQuery(command.query || command.title || command.id);
+      return { ok: false, error: `Commande agent inconnue: ${type || 'vide'}.` };
+    }
+
+    async function executeAgentText(text) {
+      const raw = String(text || '').trim();
+      const normalized = normalizeSearchText(raw);
+      if (!normalized) return { ok: false, error: 'Commande vide.' };
+      if (normalized.includes('parametre') || normalized.includes('reglage')) return executeAgentCommand({ type: 'show_settings' });
+      if (normalized.includes('agenda') || normalized.includes('calendrier')) return executeAgentCommand({ type: 'show_agenda' });
+      if (normalized.includes('semaine actuelle') || normalized.includes('cette semaine')) return executeAgentCommand({ type: 'current_week' });
+      if (normalized.includes('semaine suivante') || normalized.includes('prochaine semaine')) return executeAgentCommand({ type: 'week_offset', offset: 1 });
+      if (normalized.includes('semaine precedente') || normalized.includes('semaine avant')) return executeAgentCommand({ type: 'week_offset', offset: -1 });
+      if (normalized.includes('analyse')) return executeAgentCommand({ type: 'analyze_week' });
+      if (normalized.includes('charger') || normalized.includes('afficher')) return executeAgentCommand({ type: 'load_week' });
+
+      const date = firstDateInText(raw);
+      const quoted = extractQuotedText(raw);
+      const looseQuery = quoted || raw
+        .replace(/\\b(20\\d{2}-\\d{2}-\\d{2})\\b/g, '')
+        .replace(/\\b\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]\\d{2,4}\\b/g, '')
+        .replace(/deplace|deplacer|deplacee|action|au|le|la|l'|vers|pour|passe|passer|mettre|met|en|statut|supprime|supprimer/gi, ' ')
+        .trim();
+
+      if ((normalized.includes('deplace') || normalized.includes('deplacer')) && date) {
+        return moveActionByQuery(looseQuery, date);
+      }
+
+      const statusMatch = normalized.match(/\\b(done|termine|terminee|not_started|pas commence|in_progress|en cours|canceled|annule|annulee)\\b/);
+      if ((normalized.includes('passe') || normalized.includes('statut') || normalized.includes('mettre')) && statusMatch) {
+        const statusMap = {
+          termine: 'done',
+          terminee: 'done',
+          'pas commence': 'not_started',
+          'en cours': 'in_progress',
+          annule: 'canceled',
+          annulee: 'canceled',
+        };
+        const status = statusMap[statusMatch[1]] || statusMatch[1];
+        return updateActionByQuery(looseQuery, { status });
+      }
+
+      if (normalized.includes('supprime') || normalized.includes('supprimer')) {
+        return deleteActionByQuery(looseQuery);
+      }
+
+      return { ok: false, error: 'Commande pas assez claire. Utilise une phrase du type: deplace "CV" au 2026-04-03, ou une commande JSON via window.cejAgent.execute().' };
+    }
+
+    async function suggestAgentCommand(message) {
+      const response = await fetch(aiSuggestEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          state: {
+            weekStart: formatDateInput(selectedWeekStart),
+            weekEnd: formatDateInput(addDays(selectedWeekStart, 6)),
+            actions: currentActions.map(actionToClient),
+          },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok || !result.command) {
+        return {
+          ok: false,
+          error: result?.error || 'IA indisponible ou commande refusee.',
+          raw: result,
+        };
+      }
+      return result;
+    }
+
+    async function runAgentFromInput(message) {
+      const trimmed = String(message || '').trim();
+      if (!trimmed) return { ok: false, error: 'Commande vide.' };
+
+      try {
+        const suggestion = await suggestAgentCommand(trimmed);
+        if (suggestion.ok) {
+          const explanation = suggestion.explanation || 'Commande proposee par l’IA.';
+          if (suggestion.needs_confirmation && !window.confirm(`${explanation}\n\nExecuter cette action ?`)) {
+            return { ok: false, error: 'Execution annulee.' };
+          }
+          return executeAgentCommand(suggestion.command);
+        }
+        const fallback = await executeAgentText(trimmed);
+        return fallback.ok ? fallback : suggestion;
+      } catch (error) {
+        return executeAgentText(trimmed);
+      }
+    }
+
     function openActionContextMenu(event, action) {
       event.preventDefault();
       event.stopPropagation();
@@ -1917,6 +2196,7 @@ INDEX_HTML = """<!doctype html>
     function renderCalendar(data) {
       els.calendarGrid.innerHTML = '';
       const actions = Array.isArray(data?.actions) ? data.actions : [];
+      currentActions = actions;
       const buckets = new Map();
       for (let i = 0; i < 7; i++) {
         const day = addDays(selectedWeekStart, i);
@@ -2158,6 +2438,13 @@ INDEX_HTML = """<!doctype html>
     });
     document.getElementById('quickCreateBtn').addEventListener('click', quickCreateAction);
 
+    document.getElementById('agentRunBtn').addEventListener('click', async () => {
+      const input = document.getElementById('agentCommand');
+      setAgentNotice(true, 'IA en cours...');
+      const result = await runAgentFromInput(input.value);
+      setAgentNotice(result.ok, result.ok ? (result.message || 'Commande executee.') : (result.error || 'Commande refusee.'));
+    });
+
     document.getElementById('prevWeekBtn').addEventListener('click', async () => {
       selectedWeekStart = addDays(selectedWeekStart, -7);
       syncWeekInputs();
@@ -2196,6 +2483,20 @@ INDEX_HTML = """<!doctype html>
         els.summaryMissing.textContent = `${weeklyTargetHours}h`;
       }
     });
+
+    window.cejAgent = {
+      execute: async command => {
+        const result = await executeAgentCommand(command);
+        setAgentNotice(result.ok, result.ok ? (result.message || 'Commande executee.') : (result.error || 'Commande refusee.'));
+        return result;
+      },
+      state: () => ({
+        weekStart: formatDateInput(selectedWeekStart),
+        weekEnd: formatDateInput(addDays(selectedWeekStart, 6)),
+        actions: currentActions.map(actionToClient),
+      }),
+      findActions: query => findActionCandidates(query).map(actionToClient),
+    };
   </script>
 </body>
 </html>
