@@ -1088,8 +1088,72 @@ INDEX_HTML = """<!doctype html>
     .notice.error {
       color: var(--danger);
     }
+    .yoki-widget {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 11000;
+      display: grid;
+      justify-items: end;
+      gap: 12px;
+    }
+    .yoki-bubble {
+      width: 62px;
+      height: 62px;
+      border-radius: 999px;
+      border: 1px solid var(--violet-line);
+      background: linear-gradient(135deg, var(--accent), var(--violet));
+      color: var(--accent-contrast);
+      box-shadow: 0 18px 42px rgba(20, 41, 61, 0.22);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      font-weight: 900;
+    }
+    .yoki-bubble.has-alert::after {
+      content: "";
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: #f59e0b;
+      border: 2px solid var(--panel);
+      right: 4px;
+      top: 4px;
+    }
     .agent-panel {
-      margin-top: 16px;
+      width: min(420px, calc(100vw - 28px));
+      max-height: min(720px, calc(100vh - 112px));
+      border: 1px solid var(--violet-line);
+      border-radius: 18px;
+      padding: 14px;
+      background:
+        linear-gradient(135deg, rgba(110, 86, 207, 0.12), transparent 62%),
+        var(--panel-soft);
+      box-shadow: 0 24px 56px rgba(12, 18, 28, 0.22);
+      display: none;
+      grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+      overflow: hidden;
+    }
+    .agent-panel.open {
+      display: grid;
+    }
+    .agent-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .agent-head-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .agent-panel.inline-legacy {
+      position: static;
+      width: auto;
+      max-height: none;
+      display: grid;
       border: 1px solid var(--violet-line);
       border-radius: 14px;
       padding: 14px;
@@ -1136,6 +1200,22 @@ INDEX_HTML = """<!doctype html>
       background: var(--panel-soft);
       color: var(--ink);
       font-size: 13px;
+    }
+    @media (max-width: 720px) {
+      .yoki-widget {
+        inset: auto 14px 14px auto;
+      }
+      .agent-panel.open {
+        position: fixed;
+        inset: 0;
+        width: auto;
+        max-height: none;
+        border-radius: 0;
+      }
+      .yoki-bubble {
+        width: 58px;
+        height: 58px;
+      }
     }
     .agent-message.user {
       justify-self: end;
@@ -1396,25 +1476,6 @@ INDEX_HTML = """<!doctype html>
             <button class="ghost" id="quickCreateBtn">Creer une action</button>
           </div>
           <div id="agendaNotice" class="notice" style="margin-top:14px"></div>
-          <div class="agent-panel">
-            <h3>Yoki</h3>
-            <p>Assistant CEJ: il peut expliquer ce qu’il propose, naviguer dans l’agenda et preparer des modifications avant validation.</p>
-            <div id="agentChat" class="agent-chat" aria-live="polite"></div>
-            <div id="agentProposal" class="agent-proposal" aria-hidden="true">
-              <div class="agent-proposal-title" id="agentProposalTitle">Proposition de Yoki</div>
-              <div id="agentProposalText" class="meta"></div>
-              <div id="agentProposalCommand" class="agent-proposal-command"></div>
-              <div class="actions" style="margin-top:0">
-                <button class="primary" id="agentConfirmBtn" type="button">Executer</button>
-                <button class="ghost" id="agentCancelBtn" type="button">Annuler</button>
-              </div>
-            </div>
-            <div class="agent-input-row">
-              <textarea id="agentCommand" placeholder="Exemple: Yoki, peux-tu deplacer l’action CV au 2026-04-03 ?"></textarea>
-              <button class="secondary" id="agentRunBtn" type="button">Envoyer</button>
-            </div>
-            <div id="agentNotice" class="agent-log"></div>
-          </div>
           <div id="listSummary" class="meta" style="margin-top:8px"></div>
           <div id="calendarGrid" class="calendar" style="margin-top:14px"></div>
           <div id="analysisSummary" class="analysis-summary" style="margin-top:18px"></div>
@@ -1482,9 +1543,79 @@ INDEX_HTML = """<!doctype html>
               </div>
             </div>
           </div>
+          <div class="card panel" data-requires-session="true">
+            <h2>Yoki</h2>
+            <div class="theme-grid">
+              <div class="theme-card">
+                <div>
+                  <label for="yokiAutonomyMode">Mode autonomie</label>
+                  <select id="yokiAutonomyMode">
+                    <option value="strict">Strict - tout valider</option>
+                    <option value="prudent">Prudent - creation simple autonome</option>
+                    <option value="normal">Normal - creer, modifier, deplacer si clair</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="yokiConfidence">Seuil de confiance</label>
+                  <input id="yokiConfidence" type="number" min="0.5" max="0.95" step="0.05" value="0.75">
+                </div>
+                <label style="display:flex;align-items:center;gap:10px;margin:0;text-transform:none;letter-spacing:0;color:var(--ink);font-size:14px;font-weight:600;">
+                  <input id="yokiCostGuard" type="checkbox" style="width:auto;">
+                  Bloquer Yoki avant cout payant
+                </label>
+                <div>
+                  <label for="yokiNeuronLimit">Quota neurones/jour</label>
+                  <input id="yokiNeuronLimit" type="number" min="100" step="100" value="10000">
+                </div>
+                <div class="actions">
+                  <button class="secondary" id="saveYokiSettingsBtn" type="button">Enregistrer Yoki</button>
+                  <button class="ghost" id="clearYokiHistoryBtn" type="button">Effacer conversation</button>
+                </div>
+              </div>
+              <div class="theme-card">
+                <div class="meta">Etat IA</div>
+                <div id="yokiUsageMeta" class="meta">Chargement...</div>
+                <div id="yokiLogMeta" class="meta"></div>
+                <div class="actions">
+                  <button class="ghost" id="undoYokiBtn" type="button">Annuler derniere action Yoki</button>
+                </div>
+                <div id="yokiSettingsNotice" class="notice"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
+  </div>
+  <div class="yoki-widget" data-requires-session="true">
+    <div id="agentPanel" class="agent-panel" aria-hidden="true">
+      <div class="agent-head">
+        <div>
+          <h3>Yoki</h3>
+          <p>Assistant CEJ. Il peut discuter, agir dans l’agenda et noter ce qu’il fait.</p>
+        </div>
+        <div class="agent-head-actions">
+          <button id="agentMinimizeBtn" class="icon-btn" type="button" aria-label="Reduire">−</button>
+          <button id="agentCloseBtn" class="icon-btn" type="button" aria-label="Fermer">×</button>
+        </div>
+      </div>
+      <div id="agentChat" class="agent-chat" aria-live="polite"></div>
+      <div id="agentProposal" class="agent-proposal" aria-hidden="true">
+        <div class="agent-proposal-title" id="agentProposalTitle">Proposition de Yoki</div>
+        <div id="agentProposalText" class="meta"></div>
+        <div id="agentProposalCommand" class="agent-proposal-command"></div>
+        <div class="actions" style="margin-top:0">
+          <button class="primary" id="agentConfirmBtn" type="button">Executer</button>
+          <button class="ghost" id="agentCancelBtn" type="button">Annuler</button>
+        </div>
+      </div>
+      <div class="agent-input-row">
+        <textarea id="agentCommand" placeholder="Parle a Yoki..."></textarea>
+        <button class="secondary" id="agentRunBtn" type="button">Envoyer</button>
+      </div>
+      <div id="agentNotice" class="agent-log"></div>
+    </div>
+    <button id="yokiBubbleBtn" class="yoki-bubble" type="button" aria-label="Ouvrir Yoki">Y</button>
   </div>
   <div id="contextMenu" class="context-menu" aria-hidden="true"></div>
   <div id="editModal" class="modal-overlay" aria-hidden="true">
@@ -1561,11 +1692,20 @@ INDEX_HTML = """<!doctype html>
       sessionMeta: document.getElementById('sessionMeta'),
       loginNotice: document.getElementById('loginNotice'),
       agendaNotice: document.getElementById('agendaNotice'),
+      agentPanel: document.getElementById('agentPanel'),
+      yokiBubbleBtn: document.getElementById('yokiBubbleBtn'),
       agentNotice: document.getElementById('agentNotice'),
       agentChat: document.getElementById('agentChat'),
       agentProposal: document.getElementById('agentProposal'),
       agentProposalText: document.getElementById('agentProposalText'),
       agentProposalCommand: document.getElementById('agentProposalCommand'),
+      yokiAutonomyMode: document.getElementById('yokiAutonomyMode'),
+      yokiConfidence: document.getElementById('yokiConfidence'),
+      yokiCostGuard: document.getElementById('yokiCostGuard'),
+      yokiNeuronLimit: document.getElementById('yokiNeuronLimit'),
+      yokiUsageMeta: document.getElementById('yokiUsageMeta'),
+      yokiLogMeta: document.getElementById('yokiLogMeta'),
+      yokiSettingsNotice: document.getElementById('yokiSettingsNotice'),
       themeNotice: document.getElementById('themeNotice'),
       listSummary: document.getElementById('listSummary'),
       analysisSummary: document.getElementById('analysisSummary'),
@@ -1597,7 +1737,13 @@ INDEX_HTML = """<!doctype html>
     const weekdayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
     const weeklyTargetHours = 15;
     const hoursPerAction = 2;
-    const aiSuggestEndpoint = 'https://cej-app-ai.lowan-rabille64.workers.dev/suggest';
+    const aiBaseEndpoint = 'https://cej-app-ai.lowan-rabille64.workers.dev';
+    const aiChatEndpoint = `${aiBaseEndpoint}/chat`;
+    const aiUsageEndpoint = `${aiBaseEndpoint}/usage`;
+    const yokiHistoryKey = 'cej.yoki.history.v1';
+    const yokiSettingsKey = 'cej.yoki.settings.v1';
+    const yokiLogKey = 'cej.yoki.actionLog.v1';
+    const yokiUsageKey = 'cej.yoki.usage.v1';
     const defaultTheme = {
       darkMode: false,
       primary: '#174a7c',
@@ -1609,6 +1755,19 @@ INDEX_HTML = """<!doctype html>
     let deletingAction = null;
     let pendingAgentSuggestion = null;
     let pendingAgentDraft = null;
+    let conversationHistory = [];
+    let yokiActionLog = [];
+    let yokiSettings = {
+      autonomyMode: 'normal',
+      confidenceThreshold: 0.75,
+      costGuard: true,
+      neuronDailyLimit: 10000,
+    };
+    let yokiUsage = {
+      day: new Date().toISOString().slice(0, 10),
+      requests: 0,
+      neurons: 0,
+    };
     let currentActions = [];
     let selectedWeekStart = startOfWeek(new Date());
     syncWeekInputs();
@@ -1632,13 +1791,100 @@ INDEX_HTML = """<!doctype html>
       setNotice(els.agentNotice, ok, message);
     }
 
+    function loadJsonStorage(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch {
+        return fallback;
+      }
+    }
+
+    function saveJsonStorage(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch {
+        return;
+      }
+    }
+
+    function loadYokiState() {
+      conversationHistory = loadJsonStorage(yokiHistoryKey, []);
+      yokiActionLog = loadJsonStorage(yokiLogKey, []);
+      yokiSettings = { ...yokiSettings, ...loadJsonStorage(yokiSettingsKey, {}) };
+      yokiUsage = { ...yokiUsage, ...loadJsonStorage(yokiUsageKey, {}) };
+      const today = new Date().toISOString().slice(0, 10);
+      if (yokiUsage.day !== today) {
+        yokiUsage = { day: today, requests: 0, neurons: 0 };
+      }
+      syncYokiSettingsControls();
+      renderYokiHistory();
+      renderYokiUsage();
+    }
+
+    function syncYokiSettingsControls() {
+      if (!els.yokiAutonomyMode) return;
+      els.yokiAutonomyMode.value = yokiSettings.autonomyMode;
+      els.yokiConfidence.value = String(yokiSettings.confidenceThreshold);
+      els.yokiCostGuard.checked = !!yokiSettings.costGuard;
+      els.yokiNeuronLimit.value = String(yokiSettings.neuronDailyLimit);
+    }
+
+    function persistYokiSettingsFromControls() {
+      yokiSettings = {
+        autonomyMode: els.yokiAutonomyMode.value,
+        confidenceThreshold: Number(els.yokiConfidence.value || 0.75),
+        costGuard: els.yokiCostGuard.checked,
+        neuronDailyLimit: Number(els.yokiNeuronLimit.value || 10000),
+      };
+      saveJsonStorage(yokiSettingsKey, yokiSettings);
+      renderYokiUsage();
+    }
+
+    function addConversation(role, content) {
+      conversationHistory.push({ role, content: String(content || ''), at: new Date().toISOString() });
+      conversationHistory = conversationHistory.slice(-30);
+      saveJsonStorage(yokiHistoryKey, conversationHistory);
+    }
+
+    function renderYokiHistory() {
+      if (!els.agentChat) return;
+      els.agentChat.innerHTML = '';
+      for (const item of conversationHistory) {
+        const bubble = document.createElement('div');
+        bubble.className = `agent-message ${item.role === 'user' ? 'user' : 'yoki'}`;
+        bubble.textContent = item.content;
+        els.agentChat.appendChild(bubble);
+      }
+      els.agentChat.scrollTop = els.agentChat.scrollHeight;
+    }
+
+    function renderYokiUsage(workerUsage) {
+      if (!els.yokiUsageMeta) return;
+      const blocked = yokiSettings.costGuard && yokiUsage.neurons >= yokiSettings.neuronDailyLimit;
+      els.yokiUsageMeta.textContent = `Mode ${yokiSettings.autonomyMode} | confiance ${yokiSettings.confidenceThreshold} | ${yokiUsage.neurons}/${yokiSettings.neuronDailyLimit} neurones/jour${blocked ? ' | bloque' : ''}${workerUsage ? ' | Worker OK' : ''}`;
+      els.yokiLogMeta.textContent = yokiActionLog.length ? `${yokiActionLog.length} action(s) journalisee(s). Derniere: ${yokiActionLog[yokiActionLog.length - 1].summary}` : 'Aucune action Yoki journalisee.';
+      els.yokiBubbleBtn?.classList.toggle('has-alert', Boolean(pendingAgentSuggestion));
+    }
+
+    async function refreshYokiUsage() {
+      try {
+        const response = await fetchWithTimeout(aiUsageEndpoint, {}, 5000);
+        const result = await response.json();
+        if (result?.ok) renderYokiUsage(result.usage);
+      } catch {
+        renderYokiUsage();
+      }
+    }
+
+    function estimateNeurons(message) {
+      return Math.max(1, Math.ceil(String(message || '').length / 20));
+    }
+
     function addYokiMessage(role, message) {
       if (!els.agentChat) return;
-      const bubble = document.createElement('div');
-      bubble.className = `agent-message ${role === 'user' ? 'user' : 'yoki'}`;
-      bubble.textContent = message;
-      els.agentChat.appendChild(bubble);
-      els.agentChat.scrollTop = els.agentChat.scrollHeight;
+      addConversation(role === 'user' ? 'user' : 'assistant', message);
+      renderYokiHistory();
     }
 
     function clearAgentProposal() {
@@ -1654,7 +1900,21 @@ INDEX_HTML = """<!doctype html>
       els.agentProposal.classList.add('open');
       els.agentProposal.setAttribute('aria-hidden', 'false');
       els.agentProposalText.textContent = suggestion.explanation || 'Yoki propose une action.';
-      els.agentProposalCommand.textContent = JSON.stringify(suggestion.command, null, 2);
+      const toolCall = suggestion.tool_call || suggestion.command || {};
+      els.agentProposalCommand.textContent = humanToolSummary(toolCall);
+      renderYokiUsage();
+    }
+
+    function humanToolSummary(toolCall) {
+      const name = toolCall?.name || toolCall?.type || 'action';
+      const args = toolCall?.arguments || toolCall || {};
+      if (name === 'create_action' || name === 'propose_action') return `Creer: ${args.title || 'Action CEJ'} | ${args.due || 'date a definir'} | ${args.qualification || 'categorie a definir'}`;
+      if (name === 'move_action') return `Deplacer: ${args.query || args.id || 'action'} vers ${args.due || args.date || 'date a definir'}`;
+      if (name === 'update_action') return `Modifier: ${args.query || args.id || 'action'}`;
+      if (name === 'delete_action') return `Supprimer: ${args.query || args.id || 'action'}`;
+      if (name === 'change_week') return 'Changer la semaine affichee';
+      if (name === 'analyze_week') return 'Analyser la semaine affichee';
+      return 'Action proposee par Yoki';
     }
 
     function showCreateProposal(title, due, comment = '', qualification = 'EMPLOI') {
@@ -1662,12 +1922,9 @@ INDEX_HTML = """<!doctype html>
         ok: true,
         needs_confirmation: true,
         explanation: `Je te propose de creer l'action "${title}" pour le ${due}.`,
-        command: {
-          type: 'create_action',
-          title,
-          comment,
-          due,
-          qualification,
+        tool_call: {
+          name: 'create_action',
+          arguments: { title, comment, due, qualification, status: 'done' },
         },
       };
       addYokiMessage('yoki', suggestion.explanation);
@@ -1963,14 +2220,29 @@ INDEX_HTML = """<!doctype html>
     }
 
     function dateFromText(text) {
-      return firstDateInText(text) || relativeDateInText(text);
+      return firstDateInText(text) || dayMonthDateInText(text) || relativeDateInText(text);
+    }
+
+    function dayMonthDateInText(text) {
+      const value = String(text || '');
+      const match = value.match(/\\b(?:le\\s+)?(\\d{1,2})(?:\\s+|$)/i);
+      if (!match) return null;
+      const day = Number(match[1]);
+      if (!Number.isInteger(day) || day < 1 || day > 31) return null;
+      const base = new Date(selectedWeekStart);
+      const candidate = new Date(base.getFullYear(), base.getMonth(), day);
+      if (Math.abs(candidate.getTime() - base.getTime()) > 21 * 24 * 3600 * 1000) {
+        candidate.setMonth(candidate.getMonth() + (candidate < base ? 1 : -1));
+      }
+      return formatDateInput(candidate);
     }
 
     function cleanCreateTitle(text) {
       const cleaned = String(text || '')
         .replace(/\\b(20\\d{2}-\\d{2}-\\d{2})\\b/g, '')
         .replace(/\\b\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]\\d{2,4}\\b/g, '')
-        .replace(/creer|cree|crée|creation|action|pour|stp|svp|dimanche|lundi|mardi|mercredi|jeudi|vendredi|samedi|aujourd'hui|aujourd hui|demain|\\bun\\b|\\bune\\b|\\bde\\b|\\bdu\\b|\\bdes\\b|\\bd'\\b/gi, ' ')
+        .replace(/\\b(?:le\\s+)?\\d{1,2}\\b/g, ' ')
+        .replace(/creer|cree|crée|creation|action|pour|stp|svp|dimanche|lundi|mardi|mercredi|jeudi|vendredi|samedi|aujourd'hui|aujourd hui|demain|hier|\\bon\\b|\\bnon\\b|\\bl'\\b|\\ble\\b|\\bla\\b|\\bles\\b|\\bun\\b|\\bune\\b|\\bde\\b|\\bdu\\b|\\bdes\\b|\\bd'\\b|\\bque\\b|\\bj'ai\\b|\\bjai\\b|\\bfaite?\\b/gi, ' ')
         .replace(/\\s+/g, ' ')
         .trim();
       return cleaned;
@@ -1984,6 +2256,11 @@ INDEX_HTML = """<!doctype html>
     function isYes(text) {
       const normalized = normalizeSearchText(text);
       return /\\b(oui|ok|vas y|d accord|cree|creer|ajoute|fait|go)\\b/.test(normalized);
+    }
+
+    function wantsGeneration(text) {
+      const normalized = normalizeSearchText(text);
+      return normalized.includes('genere') || normalized.includes('genere un titre') || normalized.includes('description adapte') || normalized.includes('titre et une description');
     }
 
     function inferQualification(text) {
@@ -2058,6 +2335,28 @@ INDEX_HTML = """<!doctype html>
       };
     }
 
+    function buildGenericAction(draft) {
+      const raw = `${draft.title || ''} ${draft.details || ''}`.trim();
+      const qualification = draft.qualification || inferQualification(raw);
+      const normalized = normalizeSearchText(raw);
+      if (normalized.includes('lettre') && normalized.includes('motivation')) {
+        const target = raw.match(/(?:pour|chez)\\s+(.+)$/i)?.[1]?.trim() || '';
+        const suffix = target ? ` pour ${target}` : '';
+        return {
+          title: `Redaction lettre de motivation${suffix}`,
+          comment: `Redaction et preparation d'une lettre de motivation${suffix}.`,
+          due: draft.due || formatDateInput(new Date()),
+          qualification: 'EMPLOI',
+        };
+      }
+      return {
+        title: draft.title || raw || 'Action CEJ',
+        comment: draft.details || draft.title || raw || '',
+        due: draft.due || formatDateInput(new Date()),
+        qualification,
+      };
+    }
+
     function titleLooksUsable(title) {
       const normalized = normalizeSearchText(title);
       if (normalized.length < 3) return false;
@@ -2072,6 +2371,11 @@ INDEX_HTML = """<!doctype html>
 
       if (pendingAgentDraft?.type === 'activity_action') {
         if (pendingAgentDraft.step === 'ask_create') {
+          if (due && !isYes(trimmed)) {
+            pendingAgentDraft.due = due;
+            addYokiMessage('yoki', `Ok, je note la date ${due}. Tu veux que je prepare l'action ?`);
+            return { ok: true, message: 'Yoki attend ta confirmation.' };
+          }
           if (!isYes(trimmed)) {
             pendingAgentDraft = null;
             addYokiMessage('yoki', 'Ok, je ne cree rien. Si tu veux la noter plus tard, redemande-moi.');
@@ -2086,6 +2390,28 @@ INDEX_HTML = """<!doctype html>
           const action = buildActivityAction(pendingAgentDraft);
           pendingAgentDraft = null;
           return showCreateProposal(action.title, action.due, action.comment, action.qualification);
+        }
+      }
+
+      if (pendingAgentDraft?.type === 'create_action') {
+        if (wantsGeneration(trimmed)) {
+          const action = buildGenericAction(pendingAgentDraft);
+          pendingAgentDraft = null;
+          return showCreateProposal(action.title, action.due, action.comment, action.qualification);
+        }
+        if (due && !titleLooksUsable(title)) {
+          pendingAgentDraft.due = due;
+          addYokiMessage('yoki', `Ok, je mets la date au ${due}.`);
+          if (pendingAgentDraft.title) {
+            return showCreateProposal(
+              pendingAgentDraft.title,
+              pendingAgentDraft.due,
+              pendingAgentDraft.comment || '',
+              pendingAgentDraft.qualification || inferQualification(pendingAgentDraft.title)
+            );
+          }
+          addYokiMessage('yoki', 'Il me manque encore le titre de l’action.');
+          return { ok: true, message: 'Yoki attend le titre.' };
         }
       }
 
@@ -2108,7 +2434,14 @@ INDEX_HTML = """<!doctype html>
         const mergedDue = due || pendingAgentDraft.due;
         if (titleLooksUsable(mergedTitle) && mergedDue) {
           pendingAgentDraft = null;
-          return showCreateProposal(mergedTitle, mergedDue);
+          return showCreateProposal(mergedTitle, mergedDue, '', inferQualification(mergedTitle));
+        }
+        if (titleLooksUsable(mergedTitle)) {
+          pendingAgentDraft.title = mergedTitle;
+          pendingAgentDraft.details = mergedTitle;
+          pendingAgentDraft.qualification = inferQualification(mergedTitle);
+          addYokiMessage('yoki', `J'ai le titre "${mergedTitle}". Pour quelle date ?`);
+          return { ok: true, message: 'Yoki attend la date.' };
         }
       }
 
@@ -2116,13 +2449,15 @@ INDEX_HTML = """<!doctype html>
 
       if (titleLooksUsable(title) && due) {
         pendingAgentDraft = null;
-        return showCreateProposal(title, due);
+        return showCreateProposal(title, due, '', inferQualification(title));
       }
 
       pendingAgentDraft = {
         type: 'create_action',
         title: titleLooksUsable(title) ? title : '',
         due: due || '',
+        details: titleLooksUsable(title) ? title : '',
+        qualification: inferQualification(trimmed),
       };
 
       if (!pendingAgentDraft.title && pendingAgentDraft.due) {
@@ -2393,6 +2728,134 @@ INDEX_HTML = """<!doctype html>
       return { ok: false, error: `Commande agent inconnue: ${type || 'vide'}.` };
     }
 
+    function shouldConfirmToolCall(toolCall, confidence = 0.65, requested = false) {
+      const name = toolCall?.name;
+      if (!name) return { confirm: false };
+      if (name === 'delete_action') return { confirm: true, reason: 'Yoki veut supprimer une action. Validation obligatoire.' };
+      if (requested) return { confirm: true };
+      if (confidence < yokiSettings.confidenceThreshold) return { confirm: true, reason: 'Yoki manque de confiance, validation requise.' };
+      if (yokiSettings.autonomyMode === 'strict') return { confirm: true, reason: 'Mode strict: validation requise.' };
+      if (yokiSettings.autonomyMode === 'prudent' && !['create_action', 'change_week', 'analyze_week'].includes(name)) {
+        return { confirm: true, reason: 'Mode prudent: validation requise.' };
+      }
+      return { confirm: false };
+    }
+
+    function addYokiActionLog(entry) {
+      yokiActionLog.push({ ...entry, at: new Date().toISOString() });
+      yokiActionLog = yokiActionLog.slice(-50);
+      saveJsonStorage(yokiLogKey, yokiActionLog);
+      renderYokiUsage();
+    }
+
+    function actionSnapshot(action) {
+      if (!action) return null;
+      return {
+        id: action.id,
+        title: action.content || '',
+        comment: action.comment || '',
+        due: normalizeActionDate(action),
+        status: action.status || 'not_started',
+        qualification: action.qualification?.code || 'EMPLOI',
+      };
+    }
+
+    async function executeYokiToolCall(toolCall) {
+      const name = toolCall?.name;
+      const args = toolCall?.arguments || {};
+      if (name === 'propose_action') {
+        return showCreateProposal(args.title || 'Action CEJ', args.due, args.comment || '', args.qualification || 'EMPLOI');
+      }
+      if (name === 'create_action') {
+        const result = await api('/api/create', {
+          title: args.title || '',
+          comment: args.comment || '',
+          due: args.due || '',
+          qualification: args.qualification || 'EMPLOI',
+        });
+        if (result.ok) {
+          addYokiActionLog({
+            type: 'create_action',
+            summary: `Creation "${args.title}"`,
+            undo: { type: 'delete_created', id: result.data?.id || result.data?.action?.id || '' },
+          });
+          await loadCurrentWeek(false);
+        }
+        return { ok: result.ok, message: result.ok ? `Yoki a cree: ${args.title}` : (result.error || 'Creation impossible.') };
+      }
+      if (name === 'move_action') {
+        const match = args.id ? { ok: true, action: currentActions.find(action => action.id === args.id) } : requireSingleAction(args.query || args.title || '');
+        if (!match.ok || !match.action) return { ok: false, error: match.error || 'Action introuvable.' };
+        const before = actionSnapshot(match.action);
+        const result = await api('/api/update-action', { id: match.action.id, due: args.due });
+        if (result.ok) {
+          addYokiActionLog({ type: 'move_action', summary: `Deplacement "${before.title}"`, undo: { type: 'restore_action', before } });
+          await loadCurrentWeek(false);
+        }
+        return { ok: result.ok, message: result.ok ? `Yoki a deplace: ${before.title}` : (result.error || 'Deplacement impossible.') };
+      }
+      if (name === 'update_action') {
+        const match = args.id ? { ok: true, action: currentActions.find(action => action.id === args.id) } : requireSingleAction(args.query || args.title || '');
+        if (!match.ok || !match.action) return { ok: false, error: match.error || 'Action introuvable.' };
+        const before = actionSnapshot(match.action);
+        const changes = args.changes || {};
+        const result = await api('/api/update-action', { id: match.action.id, ...changes });
+        if (result.ok) {
+          addYokiActionLog({ type: 'update_action', summary: `Modification "${before.title}"`, undo: { type: 'restore_action', before } });
+          await loadCurrentWeek(false);
+        }
+        return { ok: result.ok, message: result.ok ? `Yoki a modifie: ${before.title}` : (result.error || 'Modification impossible.') };
+      }
+      if (name === 'delete_action') {
+        const match = args.id ? { ok: true, action: currentActions.find(action => action.id === args.id) } : requireSingleAction(args.query || args.title || '');
+        if (!match.ok || !match.action) return { ok: false, error: match.error || 'Action introuvable.' };
+        const before = actionSnapshot(match.action);
+        const result = await api('/api/delete-action', { id: match.action.id });
+        if (result.ok) {
+          addYokiActionLog({ type: 'delete_action', summary: `Suppression "${before.title}"`, undo: { type: 'none' } });
+          await loadCurrentWeek(false);
+        }
+        return { ok: result.ok, message: result.ok ? `Yoki a supprime: ${before.title}` : (result.error || 'Suppression impossible.') };
+      }
+      if (name === 'change_week') {
+        selectedWeekStart = args.week_start ? startOfWeek(new Date(args.week_start)) : addDays(selectedWeekStart, Number(args.offset || 0) * 7);
+        syncWeekInputs();
+        await loadCurrentWeek(false);
+        return { ok: true, message: 'Yoki a change la semaine.' };
+      }
+      if (name === 'analyze_week') {
+        await loadCurrentWeek(true);
+        return { ok: true, message: 'Yoki a analyse la semaine.' };
+      }
+      if (name === 'ask_user') return { ok: true, message: args.question || '' };
+      return { ok: false, error: 'Outil Yoki inconnu.' };
+    }
+
+    async function undoLastYokiAction() {
+      const last = yokiActionLog[yokiActionLog.length - 1];
+      if (!last?.undo) return { ok: false, error: 'Aucune action Yoki annulable.' };
+      let result = { ok: false, error: 'Action non annulable.' };
+      if (last.undo.type === 'delete_created' && last.undo.id) result = await api('/api/delete-action', { id: last.undo.id });
+      if (last.undo.type === 'restore_action' && last.undo.before) {
+        const before = last.undo.before;
+        result = await api('/api/update-action', {
+          id: before.id,
+          title: before.title,
+          comment: before.comment,
+          due: before.due,
+          qualification: before.qualification,
+          status: before.status,
+        });
+      }
+      if (result.ok) {
+        yokiActionLog.pop();
+        saveJsonStorage(yokiLogKey, yokiActionLog);
+        renderYokiUsage();
+        await loadCurrentWeek(false);
+      }
+      return result;
+    }
+
     async function executeAgentText(text) {
       const raw = String(text || '').trim();
       const normalized = normalizeSearchText(raw);
@@ -2438,27 +2901,46 @@ INDEX_HTML = """<!doctype html>
       return { ok: false, error: 'Commande pas assez claire. Utilise une phrase du type: deplace "CV" au 2026-04-03, ou une commande JSON via window.cejAgent.execute().' };
     }
 
-    async function suggestAgentCommand(message) {
-      const response = await fetch(aiSuggestEndpoint, {
+    async function fetchWithTimeout(url, options, timeoutMs = 12000) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    async function chatWithYoki(message) {
+      const neurons = estimateNeurons(message) + Math.ceil(JSON.stringify(currentActions.map(actionToClient)).length / 200);
+      if (yokiSettings.costGuard && yokiUsage.neurons + neurons > yokiSettings.neuronDailyLimit) {
+        return {
+          ok: false,
+          message: 'Yoki est bloque par le garde-fou quota IA local. Augmente le quota dans Parametre si tu veux continuer.',
+          error: 'quota_guard',
+        };
+      }
+      const response = await fetchWithTimeout(aiChatEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message,
+          history: conversationHistory.slice(-10).map(item => ({ role: item.role, content: item.content })),
           state: {
+            today: new Date().toISOString().slice(0, 10),
             weekStart: formatDateInput(selectedWeekStart),
             weekEnd: formatDateInput(addDays(selectedWeekStart, 6)),
             actions: currentActions.map(actionToClient),
           },
+          settings: yokiSettings,
         }),
       });
       const result = await response.json();
-      if (!response.ok || !result.ok || !result.command) {
-        return {
-          ok: false,
-          error: result?.error || 'IA indisponible ou commande refusee.',
-          raw: result,
-        };
-      }
+      yokiUsage.requests += 1;
+      yokiUsage.neurons += neurons;
+      saveJsonStorage(yokiUsageKey, yokiUsage);
+      renderYokiUsage(result.usage);
+      if (!response.ok || !result.ok) return { ok: false, message: result?.message || 'Yoki n’arrive pas a reflechir pour l’instant.', error: result?.error || 'ia_error' };
       return result;
     }
 
@@ -2466,34 +2948,25 @@ INDEX_HTML = """<!doctype html>
       const trimmed = String(message || '').trim();
       if (!trimmed) return { ok: false, error: 'Commande vide.' };
 
-      const localDraftResult = mergePendingCreateDraft(trimmed);
-      if (localDraftResult) return localDraftResult;
-
       try {
-        const suggestion = await suggestAgentCommand(trimmed);
-        if (suggestion.ok) {
-          const explanation = suggestion.explanation || 'Commande proposee par l’IA.';
-          addYokiMessage('yoki', explanation);
-          if (suggestion.needs_confirmation) {
-            showAgentProposal(suggestion);
-            return { ok: true, message: 'Yoki attend ta validation.' };
-          }
-          clearAgentProposal();
-          return executeAgentCommand(suggestion.command);
+        const answer = await chatWithYoki(trimmed);
+        addYokiMessage('yoki', answer.message || (answer.ok ? 'Commande recue.' : 'Je n’arrive pas a reflechir pour l’instant.'));
+        if (!answer.ok || !answer.tool_call) return { ok: answer.ok, message: '', error: answer.error };
+        const decision = shouldConfirmToolCall(answer.tool_call, answer.confidence, answer.needs_confirmation);
+        if (decision.confirm) {
+          showAgentProposal({
+            explanation: decision.reason || answer.message || 'Yoki propose une action.',
+            command: answer.tool_call,
+            tool_call: answer.tool_call,
+          });
+          return { ok: true, message: 'Yoki attend ta validation.' };
         }
-        const fallback = await executeAgentText(trimmed);
-        if (fallback.ok) {
-          addYokiMessage('yoki', fallback.message || 'Commande executee.');
-          clearAgentProposal();
-          return fallback;
-        }
-        addYokiMessage('yoki', suggestion.error || 'Je ne peux pas faire cette action de façon fiable.');
-        return suggestion;
-      } catch (error) {
-        const fallback = await executeAgentText(trimmed);
-        addYokiMessage('yoki', fallback.ok ? (fallback.message || 'Commande executee.') : (fallback.error || 'Je ne comprends pas encore cette demande.'));
         clearAgentProposal();
-        return fallback;
+        return executeYokiToolCall(answer.tool_call);
+      } catch (error) {
+        addYokiMessage('yoki', 'Yoki n’arrive pas a reflechir pour l’instant. Reessaie ou fais l’action manuellement.');
+        clearAgentProposal();
+        return { ok: false, error: 'Timeout ou erreur IA.' };
       }
     }
 
@@ -2785,11 +3258,11 @@ INDEX_HTML = """<!doctype html>
     });
 
     document.getElementById('agentConfirmBtn').addEventListener('click', async () => {
-      if (!pendingAgentSuggestion?.command) return;
-      const command = pendingAgentSuggestion.command;
+      const toolCall = pendingAgentSuggestion?.tool_call || pendingAgentSuggestion?.command;
+      if (!toolCall) return;
       clearAgentProposal();
       setAgentNotice(true, 'Execution en cours...');
-      const result = await executeAgentCommand(command);
+      const result = toolCall.name ? await executeYokiToolCall(toolCall) : await executeAgentCommand(toolCall);
       addYokiMessage('yoki', result.ok ? (result.message || 'Action executee.') : (result.error || 'Execution impossible.'));
       setAgentNotice(result.ok, result.ok ? '' : (result.error || 'Execution impossible.'));
     });
@@ -2798,6 +3271,34 @@ INDEX_HTML = """<!doctype html>
       clearAgentProposal();
       addYokiMessage('yoki', 'Action annulee. Je ne modifie rien.');
       setAgentNotice(true, '');
+    });
+
+    document.getElementById('yokiBubbleBtn').addEventListener('click', () => {
+      els.agentPanel.classList.toggle('open');
+      els.agentPanel.setAttribute('aria-hidden', els.agentPanel.classList.contains('open') ? 'false' : 'true');
+      renderYokiUsage();
+    });
+    document.getElementById('agentCloseBtn').addEventListener('click', () => {
+      els.agentPanel.classList.remove('open');
+      els.agentPanel.setAttribute('aria-hidden', 'true');
+    });
+    document.getElementById('agentMinimizeBtn').addEventListener('click', () => {
+      els.agentPanel.classList.remove('open');
+      els.agentPanel.setAttribute('aria-hidden', 'true');
+    });
+    document.getElementById('saveYokiSettingsBtn').addEventListener('click', () => {
+      persistYokiSettingsFromControls();
+      setNotice(els.yokiSettingsNotice, true, 'Parametres Yoki enregistres.');
+    });
+    document.getElementById('clearYokiHistoryBtn').addEventListener('click', () => {
+      conversationHistory = [];
+      saveJsonStorage(yokiHistoryKey, conversationHistory);
+      renderYokiHistory();
+      setNotice(els.yokiSettingsNotice, true, 'Conversation Yoki effacee.');
+    });
+    document.getElementById('undoYokiBtn').addEventListener('click', async () => {
+      const result = await undoLastYokiAction();
+      setNotice(els.yokiSettingsNotice, result.ok, result.ok ? 'Derniere action Yoki annulee.' : (result.error || 'Annulation impossible.'));
     });
 
     document.getElementById('prevWeekBtn').addEventListener('click', async () => {
@@ -2817,6 +3318,9 @@ INDEX_HTML = """<!doctype html>
       syncWeekInputs();
       await loadCurrentWeek(false);
     });
+
+    loadYokiState();
+    refreshYokiUsage();
 
     api('/api/theme').then(result => {
       if (result && result.ok && result.theme) {
