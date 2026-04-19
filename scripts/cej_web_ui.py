@@ -1122,7 +1122,7 @@ INDEX_HTML = """<!doctype html>
       top: 4px;
     }
     .agent-panel {
-      width: min(420px, calc(100vw - 28px));
+      width: min(560px, calc(100vw - 28px));
       max-height: min(720px, calc(100vh - 112px));
       border: 1px solid var(--violet-line);
       border-radius: 18px;
@@ -1173,6 +1173,12 @@ INDEX_HTML = """<!doctype html>
     .agent-head-actions {
       display: flex;
       gap: 8px;
+      flex-shrink: 0;
+    }
+    .agent-head-actions .dev-only {
+      width: auto;
+      min-width: 72px;
+      padding: 0 12px;
     }
     .agent-panel.inline-legacy {
       position: static;
@@ -1217,14 +1223,16 @@ INDEX_HTML = """<!doctype html>
       margin-bottom: 10px;
     }
     .agent-message {
-      width: fit-content;
-      max-width: 86%;
+      width: auto;
+      max-width: 100%;
       padding: 9px 11px;
       border-radius: 12px;
       border: 1px solid var(--line);
       background: var(--panel-soft);
       color: var(--ink);
       font-size: 13px;
+      overflow-wrap: anywhere;
+      line-height: 1.45;
     }
     @media (max-width: 720px) {
       .yoki-widget {

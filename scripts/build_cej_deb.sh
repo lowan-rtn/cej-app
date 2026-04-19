@@ -33,6 +33,11 @@ cat > "${BIN_ROOT}/${APP_NAME}" <<'EOF'
 #!/bin/sh
 set -eu
 APP_ROOT="/opt/cej-dashboard"
+LOG_DIR="${HOME}/.cache/cej-dashboard"
+mkdir -p "${LOG_DIR}"
+cd "${HOME}"
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
+export QTWEBENGINE_DISABLE_SANDBOX="${QTWEBENGINE_DISABLE_SANDBOX:-1}"
 VENV_SITE="${APP_ROOT}/venv/lib/python3.13/site-packages"
 if [ -d "${VENV_SITE}" ]; then
   if [ "${PYTHONPATH:-}" != "" ]; then
@@ -41,7 +46,7 @@ if [ -d "${VENV_SITE}" ]; then
     export PYTHONPATH="${VENV_SITE}"
   fi
 fi
-exec /usr/bin/python3 "${APP_ROOT}/app/cej_desktop.py" "$@"
+exec /usr/bin/python3 "${APP_ROOT}/app/cej_desktop.py" "$@" >> "${LOG_DIR}/desktop.log" 2>&1
 EOF
 chmod 0755 "${BIN_ROOT}/${APP_NAME}"
 
@@ -56,6 +61,7 @@ Icon=cej-dashboard
 Terminal=false
 Categories=Office;Utility;
 StartupNotify=true
+StartupWMClass=Tableau de bord CEJ
 EOF
 
 cat > "${DOC_ROOT}/copyright" <<'EOF'
