@@ -1881,6 +1881,14 @@ INDEX_HTML = """<!doctype html>
       renderYokiUsage();
     }
 
+    function setYokiDevMode(enabled) {
+      yokiSettings.devMode = Boolean(enabled);
+      if (els.yokiDevMode) els.yokiDevMode.checked = yokiSettings.devMode;
+      document.body.classList.toggle('dev-mode', yokiSettings.devMode);
+      saveJsonStorage(yokiSettingsKey, yokiSettings);
+      renderYokiUsage();
+    }
+
     function addConversation(role, content) {
       conversationHistory.push({ role, content: String(content || ''), at: new Date().toISOString() });
       conversationHistory = conversationHistory.slice(-30);
@@ -3342,6 +3350,10 @@ INDEX_HTML = """<!doctype html>
     document.getElementById('saveYokiSettingsBtn').addEventListener('click', () => {
       persistYokiSettingsFromControls();
       setNotice(els.yokiSettingsNotice, true, 'Parametres Yoki enregistres.');
+    });
+    els.yokiDevMode.addEventListener('change', () => {
+      setYokiDevMode(els.yokiDevMode.checked);
+      setNotice(els.yokiSettingsNotice, true, els.yokiDevMode.checked ? 'Mode dev active: bouton Detail visible dans Yoki.' : 'Mode dev desactive.');
     });
     document.getElementById('clearYokiHistoryBtn').addEventListener('click', () => {
       conversationHistory = [];
