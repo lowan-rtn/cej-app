@@ -1097,6 +1097,9 @@ INDEX_HTML = """<!doctype html>
       justify-items: end;
       gap: 12px;
     }
+    body.yoki-disabled .yoki-widget {
+      display: none;
+    }
     .yoki-bubble {
       width: 62px;
       height: 62px;
@@ -1588,6 +1591,10 @@ INDEX_HTML = """<!doctype html>
                     <option value="normal">Normal - creer, modifier, deplacer si clair</option>
                   </select>
                 </div>
+                <label style="display:flex;align-items:center;gap:10px;margin:0;text-transform:none;letter-spacing:0;color:var(--ink);font-size:14px;font-weight:600;">
+                  <input id="yokiEnabled" type="checkbox" style="width:auto;">
+                  Activer Yoki
+                </label>
                 <div>
                   <label for="yokiConfidence">Seuil de confiance</label>
                   <input id="yokiConfidence" type="number" min="0.5" max="0.95" step="0.05" value="0.75">
@@ -1740,6 +1747,7 @@ INDEX_HTML = """<!doctype html>
       agentProposal: document.getElementById('agentProposal'),
       agentProposalText: document.getElementById('agentProposalText'),
       agentProposalCommand: document.getElementById('agentProposalCommand'),
+      yokiEnabled: document.getElementById('yokiEnabled'),
       yokiAutonomyMode: document.getElementById('yokiAutonomyMode'),
       yokiConfidence: document.getElementById('yokiConfidence'),
       yokiCostGuard: document.getElementById('yokiCostGuard'),
@@ -1800,6 +1808,7 @@ INDEX_HTML = """<!doctype html>
     let conversationHistory = [];
     let yokiActionLog = [];
     let yokiSettings = {
+      enabled: false,
       autonomyMode: 'normal',
       confidenceThreshold: 0.75,
       costGuard: true,
@@ -1868,16 +1877,19 @@ INDEX_HTML = """<!doctype html>
 
     function syncYokiSettingsControls() {
       if (!els.yokiAutonomyMode) return;
+      els.yokiEnabled.checked = !!yokiSettings.enabled;
       els.yokiAutonomyMode.value = yokiSettings.autonomyMode;
       els.yokiConfidence.value = String(yokiSettings.confidenceThreshold);
       els.yokiCostGuard.checked = !!yokiSettings.costGuard;
       els.yokiDevMode.checked = !!yokiSettings.devMode;
       els.yokiNeuronLimit.value = String(yokiSettings.neuronDailyLimit);
+      document.body.classList.toggle('yoki-disabled', !yokiSettings.enabled);
       document.body.classList.toggle('dev-mode', !!yokiSettings.devMode);
     }
 
     function persistYokiSettingsFromControls() {
       yokiSettings = {
+        enabled: els.yokiEnabled.checked,
         autonomyMode: els.yokiAutonomyMode.value,
         confidenceThreshold: Number(els.yokiConfidence.value || 0.75),
         costGuard: els.yokiCostGuard.checked,
@@ -1885,7 +1897,20 @@ INDEX_HTML = """<!doctype html>
         neuronDailyLimit: Number(els.yokiNeuronLimit.value || 10000),
       };
       saveJsonStorage(yokiSettingsKey, yokiSettings);
+      document.body.classList.toggle('yoki-disabled', !yokiSettings.enabled);
       document.body.classList.toggle('dev-mode', !!yokiSettings.devMode);
+      renderYokiUsage();
+    }
+
+    function setYokiEnabled(enabled) {
+      yokiSettings.enabled = Boolean(enabled);
+      if (els.yokiEnabled) els.yokiEnabled.checked = yokiSettings.enabled;
+      document.body.classList.toggle('yoki-disabled', !yokiSettings.enabled);
+      if (!yokiSettings.enabled) {
+        els.agentPanel?.classList.remove('open');
+        els.agentPanel?.setAttribute('aria-hidden', 'true');
+      }
+      saveJsonStorage(yokiSettingsKey, yokiSettings);
       renderYokiUsage();
     }
 
@@ -1918,7 +1943,7 @@ INDEX_HTML = """<!doctype html>
     function renderYokiUsage(workerUsage) {
       if (!els.yokiUsageMeta) return;
       const blocked = yokiSettings.costGuard && yokiUsage.neurons >= yokiSettings.neuronDailyLimit;
-      els.yokiUsageMeta.textContent = `Mode ${yokiSettings.autonomyMode} | confiance ${yokiSettings.confidenceThreshold} | ${yokiUsage.neurons}/${yokiSettings.neuronDailyLimit} neurones/jour${blocked ? ' | bloque' : ''}${workerUsage ? ' | Worker OK' : ''}${yokiSettings.devMode ? ' | dev' : ''}`;
+      els.yokiUsageMeta.textContent = `${yokiSettings.enabled ? 'Yoki actif' : 'Yoki desactive'} | Mode ${yokiSettings.autonomyMode} | confiance ${yokiSettings.confidenceThreshold} | ${yokiUsage.neurons}/${yokiSettings.neuronDailyLimit} neurones/jour${blocked ? ' | bloque' : ''}${workerUsage ? ' | Worker OK' : ''}${yokiSettings.devMode ? ' | dev' : ''}`;
       els.yokiLogMeta.textContent = yokiActionLog.length ? `${yokiActionLog.length} action(s) journalisee(s). Derniere: ${yokiActionLog[yokiActionLog.length - 1].summary}` : 'Aucune action Yoki journalisee.';
       els.yokiBubbleBtn?.classList.toggle('has-alert', Boolean(pendingAgentSuggestion));
     }
@@ -3358,6 +3383,10 @@ INDEX_HTML = """<!doctype html>
     document.getElementById('saveYokiSettingsBtn').addEventListener('click', () => {
       persistYokiSettingsFromControls();
       setNotice(els.yokiSettingsNotice, true, 'Parametres Yoki enregistres.');
+    });
+    els.yokiEnabled.addEventListener('change', () => {
+      setYokiEnabled(els.yokiEnabled.checked);
+      setNotice(els.yokiSettingsNotice, true, els.yokiEnabled.checked ? 'Yoki active.' : 'Yoki desactive.');
     });
     els.yokiDevMode.addEventListener('change', () => {
       setYokiDevMode(els.yokiDevMode.checked);
