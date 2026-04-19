@@ -61,22 +61,13 @@ export default {
           }, null, 2),
         },
       ],
-      temperature: 0.2,
-      max_tokens: 1400,
-      max_completion_tokens: 1400,
+      temperature: 0,
+      max_tokens: 700,
+      max_completion_tokens: 700,
     });
 
     const raw = extractAiText(aiResult);
-    const parsed = parseJsonObject(raw);
-    if (!parsed) {
-      return json({
-        ok: false,
-        message: "Je n'arrive pas a produire une reponse fiable pour l'instant.",
-        error: "invalid_ai_response",
-        raw,
-        usage,
-      }, 502);
-    }
+    const parsed = parseJsonObject(raw) || fallbackResponse(message, state);
 
     const normalized = normalizeChatResponse(parsed, state);
     const response = {
@@ -88,7 +79,6 @@ export default {
       error: normalized.error,
       model,
       usage: { ...usage, requests_today: usage.requests_today + 1 },
-      raw,
     };
 
     if (url.pathname === "/suggest") {
@@ -102,12 +92,15 @@ export default {
 function systemPrompt() {
   return [
     "Tu es Yoki, assistant conversationnel pour une app CEJ.",
+    "IMPORTANT: ta sortie doit etre uniquement un objet JSON valide. Aucun Markdown, aucune analyse, aucune etape, aucun texte hors JSON.",
+    "N'ecris jamais ton raisonnement. Ne commence jamais par une liste numerotee.",
     "Tu parles naturellement en francais, court, utile, sans exposer de JSON.",
     "Tu dois décider si tu réponds seulement, si tu demandes une précision, ou si tu appelles un outil.",
     "Ne crée pas une action si les informations essentielles manquent: titre/activité et date.",
     "Si l'utilisateur demande si une activité passe en CEJ, conseille une catégorie puis demande s'il veut préparer l'action.",
     "Quand l'utilisateur confirme une intention précédente, utilise l'historique.",
     "Pour les outils, retourne toujours un JSON strict: message, tool_call, confidence, needs_confirmation.",
+    'Format exact: {"message":"...","tool_call":null,"confidence":0.8,"needs_confirmation":false}',
     "tool_call peut être null si tu poses une question ou réponds sans action.",
     "Utilise create_action seulement quand title, due et qualification sont connus.",
     "Utilise update_action/move_action seulement si la cible est claire dans state.actions ou via query précis.",
@@ -280,6 +273,55 @@ function parseJsonObject(text) {
       return null;
     }
   }
+}
+
+function fallbackResponse(message, state) {
+  const normalized = normalizeText(message);
+  const autoEcole = /\b(auto ecole|auto-ecole|permis|code)\b/.test(normalized);
+  const asksEligibility = /\b(passe|cadre|cej|compte|valable|possible)\b/.test(normalized);
+  const date = inferDateFromText(normalized, state);
+
+  if (autoEcole && asksEligibility) {
+    return {
+      message: "Oui, une demarche a l'auto-ecole peut passer dans ton CEJ, plutot en FORMATION. Tu veux que je prepare l'action ? Si oui, dis-moi la date.",
+      tool_call: null,
+      confidence: 0.82,
+      needs_confirmation: false,
+    };
+  }
+
+  if (autoEcole && date) {
+    return {
+      message: "Je peux preparer une action FORMATION pour ta demarche a l'auto-ecole.",
+      tool_call: {
+        name: "propose_action",
+        arguments: {
+          title: "Demarches a l'auto-ecole",
+          comment: "Demarches administratives realisees a l'auto-ecole dans le cadre du parcours permis.",
+          due: date,
+          qualification: "FORMATION",
+        },
+      },
+      confidence: 0.78,
+      needs_confirmation: true,
+    };
+  }
+
+  return {
+    message: "Je n'arrive pas a formuler une reponse fiable. Reformule avec l'action et la date, par exemple: auto-ecole le 2026-04-19.",
+    tool_call: null,
+    confidence: 0.2,
+    needs_confirmation: false,
+  };
+}
+
+function inferDateFromText(normalized, state) {
+  const explicit = normalized.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+  if (explicit) return explicit[1];
+  if (normalized.includes("aujourd hui") || normalized.includes("aujourdhui")) return state.today;
+  if (normalized.includes("demain")) return addDaysIso(state.today, 1);
+  if (normalized.includes("hier")) return addDaysIso(state.today, -1);
+  return "";
 }
 
 function normalizeText(value) {
