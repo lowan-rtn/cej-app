@@ -1135,6 +1135,31 @@ INDEX_HTML = """<!doctype html>
       grid-template-rows: auto minmax(0, 1fr) auto auto auto;
       overflow: hidden;
     }
+    .agent-raw {
+      display: none;
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid var(--violet-line);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--panel) 88%, #000 12%);
+      color: var(--ink);
+      padding: 10px;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      margin: 0 0 10px;
+    }
+    .agent-raw.open {
+      display: block;
+    }
+    .dev-only {
+      display: none !important;
+    }
+    body.dev-mode .dev-only {
+      display: inline-grid !important;
+    }
     .agent-panel.open {
       display: grid;
     }
@@ -1563,6 +1588,10 @@ INDEX_HTML = """<!doctype html>
                   <input id="yokiCostGuard" type="checkbox" style="width:auto;">
                   Bloquer Yoki avant cout payant
                 </label>
+                <label style="display:flex;align-items:center;gap:10px;margin:0;text-transform:none;letter-spacing:0;color:var(--ink);font-size:14px;font-weight:600;">
+                  <input id="yokiDevMode" type="checkbox" style="width:auto;">
+                  Mode dev Yoki
+                </label>
                 <div>
                   <label for="yokiNeuronLimit">Quota neurones/jour</label>
                   <input id="yokiNeuronLimit" type="number" min="100" step="100" value="10000">
@@ -1595,10 +1624,12 @@ INDEX_HTML = """<!doctype html>
           <p>Assistant CEJ. Il peut discuter, agir dans l’agenda et noter ce qu’il fait.</p>
         </div>
         <div class="agent-head-actions">
+          <button id="agentRawBtn" class="icon-btn dev-only" type="button" aria-label="Details Yoki">Detail</button>
           <button id="agentMinimizeBtn" class="icon-btn" type="button" aria-label="Reduire">−</button>
           <button id="agentCloseBtn" class="icon-btn" type="button" aria-label="Fermer">×</button>
         </div>
       </div>
+      <pre id="agentRawOutput" class="agent-raw" aria-hidden="true"></pre>
       <div id="agentChat" class="agent-chat" aria-live="polite"></div>
       <div id="agentProposal" class="agent-proposal" aria-hidden="true">
         <div class="agent-proposal-title" id="agentProposalTitle">Proposition de Yoki</div>
@@ -1696,12 +1727,15 @@ INDEX_HTML = """<!doctype html>
       yokiBubbleBtn: document.getElementById('yokiBubbleBtn'),
       agentNotice: document.getElementById('agentNotice'),
       agentChat: document.getElementById('agentChat'),
+      agentRawBtn: document.getElementById('agentRawBtn'),
+      agentRawOutput: document.getElementById('agentRawOutput'),
       agentProposal: document.getElementById('agentProposal'),
       agentProposalText: document.getElementById('agentProposalText'),
       agentProposalCommand: document.getElementById('agentProposalCommand'),
       yokiAutonomyMode: document.getElementById('yokiAutonomyMode'),
       yokiConfidence: document.getElementById('yokiConfidence'),
       yokiCostGuard: document.getElementById('yokiCostGuard'),
+      yokiDevMode: document.getElementById('yokiDevMode'),
       yokiNeuronLimit: document.getElementById('yokiNeuronLimit'),
       yokiUsageMeta: document.getElementById('yokiUsageMeta'),
       yokiLogMeta: document.getElementById('yokiLogMeta'),
@@ -1762,12 +1796,14 @@ INDEX_HTML = """<!doctype html>
       confidenceThreshold: 0.75,
       costGuard: true,
       neuronDailyLimit: 10000,
+      devMode: false,
     };
     let yokiUsage = {
       day: new Date().toISOString().slice(0, 10),
       requests: 0,
       neurons: 0,
     };
+    let lastYokiRaw = '';
     let currentActions = [];
     let selectedWeekStart = startOfWeek(new Date());
     syncWeekInputs();
@@ -1827,7 +1863,9 @@ INDEX_HTML = """<!doctype html>
       els.yokiAutonomyMode.value = yokiSettings.autonomyMode;
       els.yokiConfidence.value = String(yokiSettings.confidenceThreshold);
       els.yokiCostGuard.checked = !!yokiSettings.costGuard;
+      els.yokiDevMode.checked = !!yokiSettings.devMode;
       els.yokiNeuronLimit.value = String(yokiSettings.neuronDailyLimit);
+      document.body.classList.toggle('dev-mode', !!yokiSettings.devMode);
     }
 
     function persistYokiSettingsFromControls() {
@@ -1835,9 +1873,11 @@ INDEX_HTML = """<!doctype html>
         autonomyMode: els.yokiAutonomyMode.value,
         confidenceThreshold: Number(els.yokiConfidence.value || 0.75),
         costGuard: els.yokiCostGuard.checked,
+        devMode: els.yokiDevMode.checked,
         neuronDailyLimit: Number(els.yokiNeuronLimit.value || 10000),
       };
       saveJsonStorage(yokiSettingsKey, yokiSettings);
+      document.body.classList.toggle('dev-mode', !!yokiSettings.devMode);
       renderYokiUsage();
     }
 
@@ -1862,9 +1902,15 @@ INDEX_HTML = """<!doctype html>
     function renderYokiUsage(workerUsage) {
       if (!els.yokiUsageMeta) return;
       const blocked = yokiSettings.costGuard && yokiUsage.neurons >= yokiSettings.neuronDailyLimit;
-      els.yokiUsageMeta.textContent = `Mode ${yokiSettings.autonomyMode} | confiance ${yokiSettings.confidenceThreshold} | ${yokiUsage.neurons}/${yokiSettings.neuronDailyLimit} neurones/jour${blocked ? ' | bloque' : ''}${workerUsage ? ' | Worker OK' : ''}`;
+      els.yokiUsageMeta.textContent = `Mode ${yokiSettings.autonomyMode} | confiance ${yokiSettings.confidenceThreshold} | ${yokiUsage.neurons}/${yokiSettings.neuronDailyLimit} neurones/jour${blocked ? ' | bloque' : ''}${workerUsage ? ' | Worker OK' : ''}${yokiSettings.devMode ? ' | dev' : ''}`;
       els.yokiLogMeta.textContent = yokiActionLog.length ? `${yokiActionLog.length} action(s) journalisee(s). Derniere: ${yokiActionLog[yokiActionLog.length - 1].summary}` : 'Aucune action Yoki journalisee.';
       els.yokiBubbleBtn?.classList.toggle('has-alert', Boolean(pendingAgentSuggestion));
+    }
+
+    function setYokiRaw(raw) {
+      lastYokiRaw = raw ? String(raw) : '';
+      if (!els.agentRawOutput) return;
+      els.agentRawOutput.textContent = lastYokiRaw || 'Aucune sortie brute disponible.';
     }
 
     async function refreshYokiUsage() {
@@ -2940,6 +2986,7 @@ INDEX_HTML = """<!doctype html>
       yokiUsage.neurons += neurons;
       saveJsonStorage(yokiUsageKey, yokiUsage);
       renderYokiUsage(result.usage);
+      setYokiRaw(result.raw || JSON.stringify(result, null, 2));
       if (!response.ok || !result.ok) return { ok: false, message: result?.message || 'Yoki n’arrive pas a reflechir pour l’instant.', error: result?.error || 'ia_error' };
       return result;
     }
@@ -3277,6 +3324,12 @@ INDEX_HTML = """<!doctype html>
       els.agentPanel.classList.toggle('open');
       els.agentPanel.setAttribute('aria-hidden', els.agentPanel.classList.contains('open') ? 'false' : 'true');
       renderYokiUsage();
+    });
+    document.getElementById('agentRawBtn').addEventListener('click', () => {
+      const open = !els.agentRawOutput.classList.contains('open');
+      els.agentRawOutput.classList.toggle('open', open);
+      els.agentRawOutput.setAttribute('aria-hidden', open ? 'false' : 'true');
+      setYokiRaw(lastYokiRaw);
     });
     document.getElementById('agentCloseBtn').addEventListener('click', () => {
       els.agentPanel.classList.remove('open');

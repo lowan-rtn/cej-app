@@ -70,6 +70,7 @@ export default {
     const parsed = parseJsonObject(raw) || fallbackResponse(message, state);
 
     const normalized = normalizeChatResponse(parsed, state);
+    const settings = sanitizeSettings(payload.settings);
     const response = {
       ok: normalized.ok,
       message: normalized.message,
@@ -80,6 +81,7 @@ export default {
       model,
       usage: { ...usage, requests_today: usage.requests_today + 1 },
     };
+    if (settings.devMode) response.raw = raw;
 
     if (url.pathname === "/suggest") {
       response.command = normalized.tool_call ? toolCallToLegacyCommand(normalized.tool_call) : null;
@@ -156,6 +158,7 @@ function sanitizeSettings(settings) {
   return {
     autonomyMode: ["strict", "prudent", "normal"].includes(mode) ? mode : "normal",
     confidenceThreshold: Number(settings?.confidenceThreshold || 0.75),
+    devMode: Boolean(settings?.devMode),
   };
 }
 
