@@ -494,6 +494,9 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
     average_hours = round(total_estimated_hours / len(ordered_weeks), 1) if ordered_weeks else 0
     average_ok = average_hours >= weekly_target_hours
     balance_total = total_estimated_hours - target_total
+    period_days = (end - start).days + 1
+    period_target = round((period_days / 7) * weekly_target_hours)
+    period_balance = total_estimated_hours - period_target
 
     return {
         "period_start": start.isoformat(),
@@ -502,6 +505,9 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
         "estimated_hours_total": total_estimated_hours,
         "weekly_target_hours": weekly_target_hours,
         "target_hours_total": target_total,
+        "period_days": period_days,
+        "period_target_hours": period_target,
+        "period_balance_hours": period_balance,
         "average_hours_per_week": average_hours,
         "average_ok": average_ok,
         "balance_hours_total": balance_total,
@@ -848,6 +854,74 @@ INDEX_HTML = """<!doctype html>
         linear-gradient(90deg, rgba(110, 86, 207, 0.08), transparent 62%),
         var(--panel-soft);
       font-weight: 700;
+    }
+    .recap-button {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      background:
+        linear-gradient(135deg, rgba(110, 86, 207, 0.09), transparent 68%),
+        var(--panel-soft);
+      color: var(--ink);
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    .recap-button:hover {
+      transform: translateY(-1px);
+      border-color: var(--violet-line);
+    }
+    .recap-cell {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .recap-cell span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .recap-cell strong {
+      font-size: 22px;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+    .recap-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+      margin: 12px 0;
+    }
+    .recap-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+      padding: 12px;
+      display: grid;
+      gap: 4px;
+    }
+    .recap-card span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .recap-card strong {
+      font-size: 20px;
+    }
+    .recap-message {
+      border: 1px solid var(--violet-line);
+      border-radius: 10px;
+      background: var(--violet-soft);
+      padding: 12px;
+      font-weight: 800;
+      line-height: 1.35;
     }
     .calendar {
       display: grid;
@@ -1606,12 +1680,12 @@ INDEX_HTML = """<!doctype html>
       <section id="agendaSection" class="section active" data-requires-session="true">
         <div class="card panel">
           <h2>Agenda hebdomadaire</h2>
-          <div class="summary-grid" style="margin-bottom:16px">
-            <div class="summary-item"><span>Semaine</span><strong id="summaryWeekCount" class="small">-</strong></div>
-            <div class="summary-item"><span>Actions</span><strong id="summaryActions">0</strong></div>
-            <div class="summary-item"><span>Heures estimees</span><strong id="summaryHours">0h</strong></div>
-            <div class="summary-item"><span>Manque CEJ</span><strong id="summaryMissing">0h</strong></div>
-          </div>
+          <button id="monthlyRecapBtn" class="recap-button" type="button" aria-label="Ouvrir le recapitulatif CEJ">
+            <div class="recap-cell"><span>Semaine</span><strong id="summaryWeekCount" class="small">-</strong></div>
+            <div class="recap-cell"><span>Actions</span><strong id="summaryActions">0</strong></div>
+            <div class="recap-cell"><span>Heures estimees</span><strong id="summaryHours">0h</strong></div>
+            <div class="recap-cell"><span>Manque CEJ</span><strong id="summaryMissing">0h</strong></div>
+          </button>
           <div class="week-toolbar">
             <button class="ghost" id="prevWeekBtn" type="button">← Semaine precedente</button>
             <div id="weekLabel" class="week-label">Semaine en cours</div>
@@ -1627,11 +1701,6 @@ INDEX_HTML = """<!doctype html>
               <label for="toDate">Au</label>
               <input id="toDate" type="date" readonly>
             </div>
-          </div>
-          <div class="actions">
-            <button class="primary" id="listBtn">Charger la semaine</button>
-            <button class="secondary" id="analyzeBtn">Analyser la semaine</button>
-            <button class="ghost" id="quickCreateBtn">Creer une action</button>
           </div>
           <div id="agendaNotice" class="notice" style="margin-top:14px"></div>
           <div id="listSummary" class="meta" style="margin-top:8px"></div>
@@ -1799,6 +1868,26 @@ INDEX_HTML = """<!doctype html>
     <button id="yokiBubbleBtn" class="yoki-bubble" type="button" aria-label="Ouvrir Yoki">Y</button>
   </div>
   <div id="contextMenu" class="context-menu" aria-hidden="true"></div>
+  <div id="recapModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" style="width:min(780px, calc(100vw - 32px));">
+      <div class="modal-head">
+        <div>
+          <h3>Recapitulatif CEJ</h3>
+          <p id="recapPeriod">Mois courant</p>
+        </div>
+        <button id="closeRecapModalBtn" class="icon-btn" type="button" aria-label="Fermer">×</button>
+      </div>
+      <div id="recapMessage" class="recap-message">Calcul en cours...</div>
+      <div class="recap-grid">
+        <div class="recap-card"><span>Ce mois-ci</span><strong id="recapMonthAverage">-</strong><div id="recapMonthDetail" class="meta"></div></div>
+        <div class="recap-card"><span>Mois precedents</span><strong id="recapPastMonthsAverage">-</strong><div id="recapPastMonthsDetail" class="meta"></div></div>
+        <div class="recap-card"><span>Autres semaines</span><strong id="recapOtherWeeksAverage">-</strong><div id="recapOtherWeeksDetail" class="meta"></div></div>
+        <div class="recap-card"><span>Reste a faire</span><strong id="recapRemaining">-</strong><div id="recapRemainingDetail" class="meta"></div></div>
+      </div>
+      <div id="recapWeeksGrid" class="week-grid"></div>
+      <div id="recapNotice" class="notice"></div>
+    </div>
+  </div>
   <div id="createModal" class="modal-overlay" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-head">
@@ -1959,6 +2048,20 @@ INDEX_HTML = """<!doctype html>
       weeksGrid: document.getElementById('weeksGrid'),
       weekLabel: document.getElementById('weekLabel'),
       calendarGrid: document.getElementById('calendarGrid'),
+      monthlyRecapBtn: document.getElementById('monthlyRecapBtn'),
+      recapModal: document.getElementById('recapModal'),
+      recapPeriod: document.getElementById('recapPeriod'),
+      recapMessage: document.getElementById('recapMessage'),
+      recapMonthAverage: document.getElementById('recapMonthAverage'),
+      recapMonthDetail: document.getElementById('recapMonthDetail'),
+      recapPastMonthsAverage: document.getElementById('recapPastMonthsAverage'),
+      recapPastMonthsDetail: document.getElementById('recapPastMonthsDetail'),
+      recapOtherWeeksAverage: document.getElementById('recapOtherWeeksAverage'),
+      recapOtherWeeksDetail: document.getElementById('recapOtherWeeksDetail'),
+      recapRemaining: document.getElementById('recapRemaining'),
+      recapRemainingDetail: document.getElementById('recapRemainingDetail'),
+      recapWeeksGrid: document.getElementById('recapWeeksGrid'),
+      recapNotice: document.getElementById('recapNotice'),
       agendaViewBtn: document.getElementById('agendaViewBtn'),
       listViewBtn: document.getElementById('listViewBtn'),
       actionListPanel: document.getElementById('actionListPanel'),
@@ -2367,12 +2470,28 @@ INDEX_HTML = """<!doctype html>
       return copy;
     }
 
+    function startOfMonth(date) {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    }
+
+    function endOfMonth(date) {
+      return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    }
+
+    function addMonths(date, months) {
+      return new Date(date.getFullYear(), date.getMonth() + months, 1);
+    }
+
     function formatDateInput(date) {
       return date.toISOString().slice(0, 10);
     }
 
     function formatDateLabel(date) {
       return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    }
+
+    function formatMonthLabel(date) {
+      return date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
     }
 
     function syncWeekInputs() {
@@ -3694,7 +3813,10 @@ INDEX_HTML = """<!doctype html>
       const balance = Number(analysis.balance_hours_total || 0);
       const balanceText = balance >= 0 ? `+${balance}h` : `${balance}h`;
       const averageStatus = analysis.average_ok ? 'moyenne OK' : 'moyenne insuffisante';
-      els.analysisSummary.textContent = `Periode: ${analysis.weeks_total} semaine(s) | moyenne ${analysis.average_hours_per_week}h/semaine (${averageStatus}) | total estime ${analysis.estimated_hours_total}/${analysis.target_hours_total}h | balance ${balanceText}`;
+      const periodTarget = analysis.period_target_hours || analysis.target_hours_total;
+      const periodBalance = Number(analysis.period_balance_hours ?? balance);
+      const periodBalanceText = periodBalance >= 0 ? `+${periodBalance}h` : `${periodBalance}h`;
+      els.analysisSummary.textContent = `Periode: ${analysis.period_days || '-'} jour(s) | moyenne ${analysis.average_hours_per_week}h/semaine (${averageStatus}) | total estime ${analysis.estimated_hours_total}/${periodTarget}h | balance ${periodBalanceText}`;
 
       for (const week of analysis.weeks || []) {
         const div = document.createElement('div');
@@ -3708,6 +3830,100 @@ INDEX_HTML = """<!doctype html>
           <div style="margin-top:8px">${titles}</div>
         `;
         els.weeksGrid.appendChild(div);
+      }
+    }
+
+    async function fetchAnalysisRange(fromDate, toDate) {
+      const result = await api('/api/analyze', {
+        from_date: fromDate,
+        to_date: toDate,
+      });
+      applyUnauthorizedState(result);
+      if (!result.ok) throw new Error(result?.error || 'Analyse impossible.');
+      return result.analysis;
+    }
+
+    function completedWeeksInMonth(analysis) {
+      const today = new Date().toISOString().slice(0, 10);
+      return (analysis?.weeks || []).filter(week => week.week_end < today);
+    }
+
+    function currentWeekInAnalysis(analysis) {
+      const today = new Date().toISOString().slice(0, 10);
+      return (analysis?.weeks || []).find(week => week.week_start <= today && week.week_end >= today) || null;
+    }
+
+    function averageFromAnalyses(analyses) {
+      const valid = analyses.filter(Boolean);
+      if (!valid.length) return 0;
+      const total = valid.reduce((sum, item) => sum + Number(item.average_hours_per_week || 0), 0);
+      return Math.round((total / valid.length) * 10) / 10;
+    }
+
+    function renderRecapWeeks(weeks) {
+      els.recapWeeksGrid.innerHTML = '';
+      for (const week of weeks || []) {
+        const balance = Number(week.balance_hours || 0);
+        const div = document.createElement('div');
+        div.className = `week-card${balance < 0 ? ' missing' : ''}`;
+        div.innerHTML = `
+          <strong>${week.week_start} → ${week.week_end}</strong>
+          <div class="meta" style="margin-top:6px">estime=${week.estimated_hours}/${week.target_hours}h | balance=${balance >= 0 ? '+' : ''}${balance}h</div>
+          <div style="margin-top:8px">${balance >= 0 ? 'Semaine au-dessus du rythme.' : 'Semaine sous le rythme.'}</div>
+        `;
+        els.recapWeeksGrid.appendChild(div);
+      }
+    }
+
+    async function openMonthlyRecap() {
+      openModal(els.recapModal);
+      setNotice(els.recapNotice, true, '');
+      els.recapMessage.textContent = 'Calcul en cours...';
+      els.recapWeeksGrid.innerHTML = '';
+
+      const now = new Date();
+      const monthStart = startOfMonth(now);
+      const monthEnd = endOfMonth(now);
+      els.recapPeriod.textContent = `Mois CEJ: ${formatDateInput(monthStart)} → ${formatDateInput(monthEnd)}`;
+
+      try {
+        const monthAnalysis = await fetchAnalysisRange(formatDateInput(monthStart), formatDateInput(monthEnd));
+        const previousMonths = await Promise.all([1, 2, 3].map(offset => {
+          const month = addMonths(monthStart, -offset);
+          return fetchAnalysisRange(formatDateInput(startOfMonth(month)), formatDateInput(endOfMonth(month))).catch(() => null);
+        }));
+
+        const monthTarget = Number(monthAnalysis.period_target_hours || monthAnalysis.target_hours_total || 0);
+        const remaining = Math.max(0, Math.ceil(monthTarget - Number(monthAnalysis.estimated_hours_total || 0)));
+        const balance = Number(monthAnalysis.period_balance_hours ?? monthAnalysis.balance_hours_total ?? 0);
+        const pastAverage = averageFromAnalyses(previousMonths);
+        const completedWeeks = completedWeeksInMonth(monthAnalysis);
+        const completedAverage = completedWeeks.length
+          ? Math.round((completedWeeks.reduce((sum, week) => sum + Number(week.estimated_hours || 0), 0) / completedWeeks.length) * 10) / 10
+          : 0;
+        const currentWeek = currentWeekInAnalysis(monthAnalysis);
+        const weeksLeft = (monthAnalysis.weeks || []).filter(week => week.week_end >= new Date().toISOString().slice(0, 10)).length;
+
+        els.recapMonthAverage.textContent = `${monthAnalysis.average_hours_per_week}h/semaine`;
+        els.recapMonthDetail.textContent = `${monthAnalysis.estimated_hours_total}/${monthTarget}h ce mois-ci du 1 au 1`;
+        els.recapPastMonthsAverage.textContent = pastAverage ? `${pastAverage}h/semaine` : '-';
+        els.recapPastMonthsDetail.textContent = 'Moyenne des 3 mois precedents disponibles';
+        els.recapOtherWeeksAverage.textContent = completedWeeks.length ? `${completedAverage}h/semaine` : '-';
+        els.recapOtherWeeksDetail.textContent = completedWeeks.length ? 'Semaines deja terminees ce mois-ci' : 'Pas encore de semaine terminee ce mois-ci';
+        els.recapRemaining.textContent = remaining ? `${remaining}h` : '0h';
+        els.recapRemainingDetail.textContent = `${weeksLeft} semaine(s) restante(s) dans ce mois CEJ`;
+
+        if (balance >= 0) {
+          els.recapMessage.textContent = `Continue, tu es dans les clous ce mois-ci avec ${balance >= 0 ? '+' : ''}${balance}h d'avance estimee.`;
+        } else if (currentWeek && weeksLeft <= 1) {
+          els.recapMessage.textContent = `Il te manque ${remaining}h pour etre dans les clous ce mois-ci. Il reste cette derniere semaine du mois pour les faire.`;
+        } else {
+          els.recapMessage.textContent = `Il te manque ${remaining}h pour etre dans les clous ce mois-ci. Tu peux compenser sur les ${weeksLeft} semaine(s) restante(s).`;
+        }
+        renderRecapWeeks(monthAnalysis.weeks || []);
+      } catch (error) {
+        els.recapMessage.textContent = 'Recapitulatif indisponible.';
+        setNotice(els.recapNotice, false, error.message || 'Impossible de calculer le recapitulatif.');
       }
     }
 
@@ -3734,6 +3950,7 @@ INDEX_HTML = """<!doctype html>
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
         hideContextMenu();
+        closeModal(els.recapModal);
         closeModal(els.createModal);
         closeModal(els.editModal);
         closeModal(els.deleteModal);
@@ -3749,6 +3966,9 @@ INDEX_HTML = """<!doctype html>
     });
     els.createModal.addEventListener('click', event => {
       if (event.target === els.createModal) closeModal(els.createModal);
+    });
+    els.recapModal.addEventListener('click', event => {
+      if (event.target === els.recapModal) closeModal(els.recapModal);
     });
     els.calendarGrid.addEventListener('click', event => {
       const retry = event.target.closest('.retry-sync');
@@ -3790,6 +4010,8 @@ INDEX_HTML = """<!doctype html>
       setNotice(els.loginNotice, result.ok, result.ok ? 'Session locale supprimee.' : (result?.error || 'Echec de deconnexion.'));
       if (result.session) updateSession(result.session);
     });
+    els.monthlyRecapBtn.addEventListener('click', openMonthlyRecap);
+    document.getElementById('closeRecapModalBtn').addEventListener('click', () => closeModal(els.recapModal));
     document.getElementById('closeCreateModalBtn').addEventListener('click', () => closeModal(els.createModal));
     document.getElementById('cancelCreateBtn').addEventListener('click', () => closeModal(els.createModal));
     document.getElementById('saveCreateBtn').addEventListener('click', submitCreateModal);
@@ -3863,10 +4085,6 @@ INDEX_HTML = """<!doctype html>
       else renderAnalysis(null);
     }
 
-    document.getElementById('listBtn').addEventListener('click', async () => {
-      switchSection('agendaSection');
-      await loadCurrentWeek(false);
-    });
     els.agendaViewBtn.addEventListener('click', () => setActiveView('agenda'));
     els.listViewBtn.addEventListener('click', () => setActiveView('list'));
     document.querySelectorAll('[data-list-filter]').forEach(button => {
@@ -3876,11 +4094,6 @@ INDEX_HTML = """<!doctype html>
         renderActionList();
       });
     });
-
-    document.getElementById('analyzeBtn').addEventListener('click', async () => {
-      await loadCurrentWeek(true);
-    });
-    document.getElementById('quickCreateBtn').addEventListener('click', quickCreateAction);
 
     document.getElementById('agentRunBtn').addEventListener('click', async () => {
       const input = document.getElementById('agentCommand');
