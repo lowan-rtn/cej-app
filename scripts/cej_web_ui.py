@@ -439,7 +439,9 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
         raise ValueError("La date de fin doit etre apres la date de debut.")
 
     weeks: dict[str, dict] = {}
-    total_hours = 0
+    estimated_hours_per_action = 2
+    weekly_target_hours = 15
+    total_estimated_hours = 0
     qualified_hours = 0
 
     cursor = start - timedelta(days=start.weekday())
@@ -450,7 +452,10 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
             "week_start": week_key,
             "week_end": (cursor + timedelta(days=6)).isoformat(),
             "count": 0,
+            "estimated_hours": 0,
             "qualified_hours": 0,
+            "target_hours": weekly_target_hours,
+            "balance_hours": -weekly_target_hours,
             "titles": [],
         }
         cursor += timedelta(days=7)
@@ -466,6 +471,8 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
         if week_key not in weeks:
             continue
         weeks[week_key]["count"] += 1
+        weeks[week_key]["estimated_hours"] += estimated_hours_per_action
+        weeks[week_key]["balance_hours"] = weeks[week_key]["estimated_hours"] - weekly_target_hours
         title = action.get("content")
         if isinstance(title, str) and title:
             weeks[week_key]["titles"].append(title)
@@ -476,16 +483,28 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
             if isinstance(hours, int):
                 weeks[week_key]["qualified_hours"] += hours
                 qualified_hours += hours
-        total_hours += 0
+        total_estimated_hours += estimated_hours_per_action
 
     ordered_weeks = list(weeks.values())
+    for week in ordered_weeks:
+        week["balance_hours"] = week["estimated_hours"] - weekly_target_hours
     missing_weeks = [week for week in ordered_weeks if week["count"] == 0]
     busiest = sorted(ordered_weeks, key=lambda item: (item["count"], item["qualified_hours"]), reverse=True)
+    target_total = len(ordered_weeks) * weekly_target_hours
+    average_hours = round(total_estimated_hours / len(ordered_weeks), 1) if ordered_weeks else 0
+    average_ok = average_hours >= weekly_target_hours
+    balance_total = total_estimated_hours - target_total
 
     return {
         "period_start": start.isoformat(),
         "period_end": end.isoformat(),
         "actions_count": len(actions),
+        "estimated_hours_total": total_estimated_hours,
+        "weekly_target_hours": weekly_target_hours,
+        "target_hours_total": target_total,
+        "average_hours_per_week": average_hours,
+        "average_ok": average_ok,
+        "balance_hours_total": balance_total,
         "qualified_hours_total": qualified_hours,
         "weeks_total": len(ordered_weeks),
         "weeks_missing_actions": len(missing_weeks),
@@ -3672,15 +3691,20 @@ INDEX_HTML = """<!doctype html>
         els.analysisSummary.textContent = '';
         return;
       }
-      els.analysisSummary.textContent = `Semaines analysees: ${analysis.weeks_total} | semaines sans action: ${analysis.weeks_missing_actions} | heures qualifiees: ${analysis.qualified_hours_total}`;
+      const balance = Number(analysis.balance_hours_total || 0);
+      const balanceText = balance >= 0 ? `+${balance}h` : `${balance}h`;
+      const averageStatus = analysis.average_ok ? 'moyenne OK' : 'moyenne insuffisante';
+      els.analysisSummary.textContent = `Periode: ${analysis.weeks_total} semaine(s) | moyenne ${analysis.average_hours_per_week}h/semaine (${averageStatus}) | total estime ${analysis.estimated_hours_total}/${analysis.target_hours_total}h | balance ${balanceText}`;
 
       for (const week of analysis.weeks || []) {
         const div = document.createElement('div');
-        div.className = `week-card${week.count === 0 ? ' missing' : ''}`;
+        const weekBalance = Number(week.balance_hours || 0);
+        div.className = `week-card${weekBalance < 0 ? ' missing' : ''}`;
         const titles = Array.isArray(week.titles) && week.titles.length ? week.titles.slice(0, 3).join(' | ') : 'Aucune action';
+        const weekBalanceText = weekBalance >= 0 ? `+${weekBalance}h` : `${weekBalance}h`;
         div.innerHTML = `
           <strong>${week.week_start} → ${week.week_end}</strong>
-          <div class="meta" style="margin-top:6px">actions=${week.count} | heures qualifiees=${week.qualified_hours}</div>
+          <div class="meta" style="margin-top:6px">actions=${week.count} | estime=${week.estimated_hours}/${week.target_hours}h | balance=${weekBalanceText}</div>
           <div style="margin-top:8px">${titles}</div>
         `;
         els.weeksGrid.appendChild(div);
