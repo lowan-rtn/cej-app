@@ -570,9 +570,9 @@ INDEX_HTML = """<!doctype html>
       color: var(--ink);
       font: 15px/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       background:
-        radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--violet-soft) 34%, transparent), transparent 28%),
-        radial-gradient(circle at 86% 8%, color-mix(in srgb, var(--accent-soft) 46%, transparent), transparent 30%),
-        linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, white 8%), var(--bg));
+        radial-gradient(circle at 18% 12%, rgba(157, 78, 221, 0.18), transparent 28%),
+        radial-gradient(circle at 86% 8%, rgba(52, 95, 158, 0.22), transparent 30%),
+        linear-gradient(180deg, #0d1930, var(--bg));
       min-height: 100vh;
       transition: background-color .22s ease, color .22s ease;
     }
@@ -665,12 +665,15 @@ INDEX_HTML = """<!doctype html>
       display: grid;
       gap: 18px;
       align-content: start;
+      background:
+        radial-gradient(circle at 24% 0%, rgba(157, 78, 221, 0.10), transparent 34%),
+        linear-gradient(180deg, rgba(13, 25, 48, 0.82), rgba(8, 17, 31, 0.92));
     }
     .card {
       position: relative;
       overflow: hidden;
       background:
-        linear-gradient(145deg, color-mix(in srgb, var(--shine) 24%, transparent), transparent 34%),
+        linear-gradient(145deg, rgba(255,255,255,0.045), transparent 34%),
         var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -683,7 +686,7 @@ INDEX_HTML = """<!doctype html>
       inset: 0;
       pointer-events: none;
       border-radius: inherit;
-      background: linear-gradient(120deg, color-mix(in srgb, var(--shine-soft) 50%, transparent), transparent 22%, transparent 78%, color-mix(in srgb, var(--violet-soft) 16%, transparent));
+      background: linear-gradient(120deg, rgba(255,255,255,0.04), transparent 22%, transparent 78%, rgba(157,78,221,0.05));
       opacity: 0.72;
     }
     .card > * {
@@ -769,7 +772,7 @@ INDEX_HTML = """<!doctype html>
       width: 100%;
       border: 1px solid var(--line-strong);
       background:
-        linear-gradient(160deg, color-mix(in srgb, var(--shine) 12%, transparent), transparent 35%),
+        linear-gradient(160deg, rgba(255,255,255,0.035), transparent 35%),
         var(--panel);
       color: var(--ink);
       border-radius: 10px;
@@ -824,7 +827,7 @@ INDEX_HTML = """<!doctype html>
         linear-gradient(180deg, rgba(255,255,255,0.18), transparent 42%),
         linear-gradient(135deg, var(--accent) 0%, var(--violet) 100%);
       color: var(--accent-contrast);
-      box-shadow: 0 14px 28px color-mix(in srgb, var(--accent) 22%, transparent);
+      box-shadow: 0 14px 28px rgba(16, 35, 63, 0.34);
     }
     button.secondary {
       background: linear-gradient(180deg, var(--violet-soft), var(--panel-soft));
@@ -887,7 +890,7 @@ INDEX_HTML = """<!doctype html>
       border-radius: 12px;
       padding: 14px;
       background:
-        linear-gradient(135deg, color-mix(in srgb, var(--shine) 22%, transparent), transparent 30%),
+        linear-gradient(135deg, rgba(255,255,255,0.05), transparent 30%),
         linear-gradient(135deg, rgba(110, 86, 207, 0.09), transparent 68%),
         var(--panel-soft);
       color: var(--ink);
@@ -926,7 +929,7 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: 10px;
       background:
-        linear-gradient(150deg, color-mix(in srgb, var(--shine) 16%, transparent), transparent 38%),
+        linear-gradient(150deg, rgba(255,255,255,0.04), transparent 38%),
         var(--panel-soft);
       padding: 12px;
       display: grid;
@@ -1056,7 +1059,7 @@ INDEX_HTML = """<!doctype html>
       border-radius: 10px;
       padding: 10px;
       background:
-        linear-gradient(145deg, color-mix(in srgb, var(--shine) 16%, transparent), transparent 36%),
+        linear-gradient(145deg, rgba(255,255,255,0.04), transparent 36%),
         var(--panel);
       cursor: grab;
       transform-origin: center center;
@@ -1074,7 +1077,7 @@ INDEX_HTML = """<!doctype html>
       background:
         linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06)),
         linear-gradient(135deg, rgba(255,255,255,0.14), rgba(110, 86, 207, 0.08)),
-        color-mix(in srgb, var(--panel) 88%, white 12%);
+        #20304a;
       box-shadow:
         0 22px 44px rgba(15, 23, 36, 0.2),
         inset 0 1px 0 rgba(255,255,255,0.32);
@@ -1314,9 +1317,9 @@ INDEX_HTML = """<!doctype html>
       cursor: not-allowed;
     }
     .drop-target {
-      box-shadow: inset 0 0 0 2px var(--violet), 0 14px 32px color-mix(in srgb, var(--violet) 16%, transparent);
+      box-shadow: inset 0 0 0 2px var(--violet), 0 14px 32px rgba(157, 78, 221, 0.18);
       background:
-        linear-gradient(135deg, color-mix(in srgb, var(--violet-soft) 74%, transparent), transparent 70%),
+        linear-gradient(135deg, rgba(157, 78, 221, 0.16), transparent 70%),
         var(--panel-soft);
       transform: scale(1.01);
       transition: box-shadow .16s ease, background-color .16s ease, transform .16s ease;
@@ -1331,18 +1334,18 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: 10px;
       background:
-        linear-gradient(145deg, color-mix(in srgb, var(--shine) 14%, transparent), transparent 34%),
+        linear-gradient(145deg, rgba(255,255,255,0.035), transparent 34%),
         var(--panel);
       color: var(--ink);
       padding: 14px;
     }
     .week-card.missing {
-      background: color-mix(in srgb, var(--danger-soft) 58%, var(--panel) 42%);
-      border-color: color-mix(in srgb, var(--danger) 38%, var(--line) 62%);
+      background: #241926;
+      border-color: rgba(255, 139, 139, 0.38);
       color: var(--ink);
     }
     .week-card.missing .meta {
-      color: color-mix(in srgb, var(--danger) 55%, var(--muted) 45%);
+      color: #dca2a7;
     }
     .notice {
       min-height: 22px;
@@ -1414,7 +1417,7 @@ INDEX_HTML = """<!doctype html>
       word-break: break-word;
       border: 1px solid var(--violet-line);
       border-radius: 12px;
-      background: color-mix(in srgb, var(--panel) 88%, #000 12%);
+      background: #0b1626;
       color: var(--ink);
       padding: 10px;
       font-family: "JetBrains Mono", "Fira Code", monospace;
@@ -1598,7 +1601,7 @@ INDEX_HTML = """<!doctype html>
       justify-content: center;
       padding: 24px;
       background:
-        radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--violet) 20%, transparent), transparent 34%),
+        radial-gradient(circle at 50% 18%, rgba(157, 78, 221, 0.20), transparent 34%),
         rgba(9, 14, 20, 0.46);
       backdrop-filter: blur(8px);
       z-index: 12000;
@@ -1616,7 +1619,7 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: 16px;
       background:
-        linear-gradient(145deg, color-mix(in srgb, var(--shine) 22%, transparent), transparent 34%),
+        linear-gradient(145deg, rgba(255,255,255,0.05), transparent 34%),
         var(--panel);
       box-shadow: 0 34px 90px rgba(5, 12, 20, 0.34);
       padding: 20px;
