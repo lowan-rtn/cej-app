@@ -443,19 +443,20 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
     weekly_target_hours = 15
     total_estimated_hours = 0
     qualified_hours = 0
+    categories: dict[str, dict] = {}
 
     cursor = start - timedelta(days=start.weekday())
     last_week_start = end - timedelta(days=end.weekday())
     while cursor <= last_week_start:
         week_key = cursor.isoformat()
         weeks[week_key] = {
-            "week_start": week_key,
-            "week_end": (cursor + timedelta(days=6)).isoformat(),
+            "week_start": max(cursor, start).isoformat(),
+            "week_end": min(cursor + timedelta(days=6), end).isoformat(),
             "count": 0,
             "estimated_hours": 0,
             "qualified_hours": 0,
-            "target_hours": weekly_target_hours,
-            "balance_hours": -weekly_target_hours,
+            "target_hours": round(((min(cursor + timedelta(days=6), end) - max(cursor, start)).days + 1) / 7 * weekly_target_hours),
+            "balance_hours": 0,
             "titles": [],
         }
         cursor += timedelta(days=7)
@@ -478,16 +479,23 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
             weeks[week_key]["titles"].append(title)
 
         qualification = action.get("qualification")
+        qualification_code = "Sans categorie"
         if isinstance(qualification, dict):
+            code = qualification.get("code")
+            if isinstance(code, str) and code:
+                qualification_code = code
             hours = qualification.get("heures")
             if isinstance(hours, int):
                 weeks[week_key]["qualified_hours"] += hours
                 qualified_hours += hours
+        category = categories.setdefault(qualification_code, {"code": qualification_code, "count": 0, "estimated_hours": 0})
+        category["count"] += 1
+        category["estimated_hours"] += estimated_hours_per_action
         total_estimated_hours += estimated_hours_per_action
 
     ordered_weeks = list(weeks.values())
     for week in ordered_weeks:
-        week["balance_hours"] = week["estimated_hours"] - weekly_target_hours
+        week["balance_hours"] = week["estimated_hours"] - week["target_hours"]
     missing_weeks = [week for week in ordered_weeks if week["count"] == 0]
     busiest = sorted(ordered_weeks, key=lambda item: (item["count"], item["qualified_hours"]), reverse=True)
     target_total = len(ordered_weeks) * weekly_target_hours
@@ -511,6 +519,7 @@ def analyze_actions(payload: dict, from_date: str, to_date: str) -> dict:
         "average_hours_per_week": average_hours,
         "average_ok": average_ok,
         "balance_hours_total": balance_total,
+        "categories": sorted(categories.values(), key=lambda item: item["estimated_hours"], reverse=True),
         "qualified_hours_total": qualified_hours,
         "weeks_total": len(ordered_weeks),
         "weeks_missing_actions": len(missing_weeks),
@@ -915,6 +924,25 @@ INDEX_HTML = """<!doctype html>
     .recap-card strong {
       font-size: 20px;
     }
+    .recap-categories {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .category-stat-row {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) 110px 130px;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+      padding: 10px 12px;
+    }
+    .category-stat-row strong,
+    .category-stat-row span {
+      overflow-wrap: anywhere;
+    }
     .recap-message {
       border: 1px solid var(--violet-line);
       border-radius: 10px;
@@ -1272,6 +1300,21 @@ INDEX_HTML = """<!doctype html>
       gap: 12px;
       margin-top: 16px;
     }
+    .week-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--ink);
+      padding: 14px;
+    }
+    .week-card.missing {
+      background: color-mix(in srgb, var(--danger-soft) 58%, var(--panel) 42%);
+      border-color: color-mix(in srgb, var(--danger) 38%, var(--line) 62%);
+      color: var(--ink);
+    }
+    .week-card.missing .meta {
+      color: color-mix(in srgb, var(--danger) 55%, var(--muted) 45%);
+    }
     .notice {
       min-height: 22px;
       color: var(--muted);
@@ -1490,16 +1533,6 @@ INDEX_HTML = """<!doctype html>
       min-height: 22px;
       color: var(--muted);
       font-size: 13px;
-    }
-    .week-card {
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 14px;
-      background: var(--panel);
-    }
-    .week-card.missing {
-      background: var(--danger-soft);
-      border-color: #ebcccc;
     }
     .theme-grid {
       display: grid;
@@ -1884,6 +1917,10 @@ INDEX_HTML = """<!doctype html>
         <div class="recap-card"><span>Autres semaines</span><strong id="recapOtherWeeksAverage">-</strong><div id="recapOtherWeeksDetail" class="meta"></div></div>
         <div class="recap-card"><span>Reste a faire</span><strong id="recapRemaining">-</strong><div id="recapRemainingDetail" class="meta"></div></div>
       </div>
+      <div class="recap-card">
+        <span>Categories</span>
+        <div id="recapCategories" class="recap-categories"></div>
+      </div>
       <div id="recapWeeksGrid" class="week-grid"></div>
       <div id="recapNotice" class="notice"></div>
     </div>
@@ -2060,6 +2097,7 @@ INDEX_HTML = """<!doctype html>
       recapOtherWeeksDetail: document.getElementById('recapOtherWeeksDetail'),
       recapRemaining: document.getElementById('recapRemaining'),
       recapRemainingDetail: document.getElementById('recapRemainingDetail'),
+      recapCategories: document.getElementById('recapCategories'),
       recapWeeksGrid: document.getElementById('recapWeeksGrid'),
       recapNotice: document.getElementById('recapNotice'),
       agendaViewBtn: document.getElementById('agendaViewBtn'),
@@ -3860,6 +3898,48 @@ INDEX_HTML = """<!doctype html>
       return Math.round((total / valid.length) * 10) / 10;
     }
 
+    function categoryAverageFromAnalyses(analyses) {
+      const totals = new Map();
+      const valid = analyses.filter(Boolean);
+      for (const analysis of valid) {
+        for (const category of analysis.categories || []) {
+          const code = category.code || 'Sans categorie';
+          totals.set(code, (totals.get(code) || 0) + Number(category.estimated_hours || 0));
+        }
+      }
+      const divisor = Math.max(1, valid.length);
+      return totals;
+    }
+
+    function renderRecapCategories(currentCategories, previousAnalyses) {
+      const previousTotals = categoryAverageFromAnalyses(previousAnalyses);
+      const codes = new Set([
+        ...(currentCategories || []).map(item => item.code || 'Sans categorie'),
+        ...previousTotals.keys(),
+      ]);
+      els.recapCategories.innerHTML = '';
+      if (!codes.size) {
+        els.recapCategories.innerHTML = '<div class="meta">Aucune categorie disponible.</div>';
+        return;
+      }
+      const currentByCode = new Map((currentCategories || []).map(item => [item.code || 'Sans categorie', item]));
+      for (const code of Array.from(codes).sort()) {
+        const current = currentByCode.get(code);
+        const currentHours = Number(current?.estimated_hours || 0);
+        const currentCount = Number(current?.count || 0);
+        const previousAverage = Math.round((Number(previousTotals.get(code) || 0) / Math.max(1, previousAnalyses.filter(Boolean).length)) * 10) / 10;
+        const row = document.createElement('div');
+        row.className = 'category-stat-row';
+        row.innerHTML = `
+          <strong>${escapeHtml(code)}</strong>
+          <span>${currentHours}h ce mois</span>
+          <span>${previousAverage}h/mois avant</span>
+          <span class="meta">${currentCount} action(s)</span>
+        `;
+        els.recapCategories.appendChild(row);
+      }
+    }
+
     function renderRecapWeeks(weeks) {
       els.recapWeeksGrid.innerHTML = '';
       for (const week of weeks || []) {
@@ -3884,7 +3964,8 @@ INDEX_HTML = """<!doctype html>
       const now = new Date();
       const monthStart = startOfMonth(now);
       const monthEnd = endOfMonth(now);
-      els.recapPeriod.textContent = `Mois CEJ: ${formatDateInput(monthStart)} → ${formatDateInput(monthEnd)}`;
+      const nextMonthStart = addMonths(monthStart, 1);
+      els.recapPeriod.textContent = `Mois CEJ: ${formatDateInput(monthStart)} → ${formatDateInput(nextMonthStart)}`;
 
       try {
         const monthAnalysis = await fetchAnalysisRange(formatDateInput(monthStart), formatDateInput(monthEnd));
@@ -3912,6 +3993,7 @@ INDEX_HTML = """<!doctype html>
         els.recapOtherWeeksDetail.textContent = completedWeeks.length ? 'Semaines deja terminees ce mois-ci' : 'Pas encore de semaine terminee ce mois-ci';
         els.recapRemaining.textContent = remaining ? `${remaining}h` : '0h';
         els.recapRemainingDetail.textContent = `${weeksLeft} semaine(s) restante(s) dans ce mois CEJ`;
+        renderRecapCategories(monthAnalysis.categories || [], previousMonths);
 
         if (balance >= 0) {
           els.recapMessage.textContent = `Continue, tu es dans les clous ce mois-ci avec ${balance >= 0 ? '+' : ''}${balance}h d'avance estimee.`;
@@ -3923,6 +4005,7 @@ INDEX_HTML = """<!doctype html>
         renderRecapWeeks(monthAnalysis.weeks || []);
       } catch (error) {
         els.recapMessage.textContent = 'Recapitulatif indisponible.';
+        els.recapCategories.innerHTML = '';
         setNotice(els.recapNotice, false, error.message || 'Impossible de calculer le recapitulatif.');
       }
     }
