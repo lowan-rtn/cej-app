@@ -581,6 +581,9 @@ INDEX_HTML = """<!doctype html>
       --violet-line: #d9cffb;
       --secondary-contrast: #2f245f;
       --shadow: 0 12px 34px rgba(20, 41, 61, 0.08);
+      --shadow-float: 0 18px 46px rgba(20, 41, 61, 0.14);
+      --shine: rgba(255,255,255,0.62);
+      --shine-soft: rgba(255,255,255,0.28);
       --radius: 14px;
     }
     * { box-sizing: border-box; }
@@ -588,7 +591,10 @@ INDEX_HTML = """<!doctype html>
       margin: 0;
       color: var(--ink);
       font: 15px/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-      background: var(--bg);
+      background:
+        radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--violet-soft) 34%, transparent), transparent 28%),
+        radial-gradient(circle at 86% 8%, color-mix(in srgb, var(--accent-soft) 46%, transparent), transparent 30%),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, white 8%), var(--bg));
       min-height: 100vh;
       transition: background-color .22s ease, color .22s ease;
     }
@@ -599,6 +605,7 @@ INDEX_HTML = """<!doctype html>
     }
     .sidebar {
       background:
+        linear-gradient(140deg, rgba(255,255,255,0.14), transparent 26%),
         radial-gradient(circle at top right, rgba(110, 86, 207, 0.32), transparent 32%),
         linear-gradient(180deg, var(--sidebar) 0%, #173858 100%);
       color: var(--sidebar-ink);
@@ -606,7 +613,8 @@ INDEX_HTML = """<!doctype html>
       display: grid;
       grid-template-rows: auto auto 1fr auto;
       gap: 22px;
-      border-right: 1px solid rgba(255,255,255,0.08);
+      border-right: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 14px 0 40px rgba(11, 23, 36, 0.12);
     }
     .sidebar-brand {
       display: grid;
@@ -681,11 +689,28 @@ INDEX_HTML = """<!doctype html>
       align-content: start;
     }
     .card {
-      background: var(--panel);
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--shine) 24%, transparent), transparent 34%),
+        var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       transition: background-color .22s ease, border-color .22s ease, box-shadow .22s ease, transform .22s ease;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: inherit;
+      background: linear-gradient(120deg, color-mix(in srgb, var(--shine-soft) 50%, transparent), transparent 22%, transparent 78%, color-mix(in srgb, var(--violet-soft) 16%, transparent));
+      opacity: 0.72;
+    }
+    .card > * {
+      position: relative;
+      z-index: 1;
     }
     .summary-grid {
       display: grid;
@@ -765,7 +790,9 @@ INDEX_HTML = """<!doctype html>
     input, select, textarea {
       width: 100%;
       border: 1px solid var(--line-strong);
-      background: var(--panel);
+      background:
+        linear-gradient(160deg, color-mix(in srgb, var(--shine) 12%, transparent), transparent 35%),
+        var(--panel);
       color: var(--ink);
       border-radius: 10px;
       padding: 11px 12px;
@@ -795,9 +822,14 @@ INDEX_HTML = """<!doctype html>
       cursor: pointer;
       font-weight: 700;
       outline: none;
-      transition: transform .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .18s ease, opacity .18s ease;
+      transition: transform .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .18s ease, opacity .18s ease, filter .18s ease;
+      will-change: transform;
     }
-    button:hover { transform: translateY(-1px); }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 22px rgba(20, 41, 61, 0.08);
+      filter: saturate(1.04);
+    }
     button:focus {
       outline: none;
       box-shadow: none;
@@ -810,8 +842,11 @@ INDEX_HTML = """<!doctype html>
       box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px rgba(110, 86, 207, 0.22);
     }
     button.primary {
-      background: linear-gradient(135deg, var(--accent) 0%, var(--violet) 100%);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.18), transparent 42%),
+        linear-gradient(135deg, var(--accent) 0%, var(--violet) 100%);
       color: var(--accent-contrast);
+      box-shadow: 0 14px 28px color-mix(in srgb, var(--accent) 22%, transparent);
     }
     button.secondary {
       background: linear-gradient(180deg, var(--violet-soft), var(--panel-soft));
@@ -874,6 +909,7 @@ INDEX_HTML = """<!doctype html>
       border-radius: 12px;
       padding: 14px;
       background:
+        linear-gradient(135deg, color-mix(in srgb, var(--shine) 22%, transparent), transparent 30%),
         linear-gradient(135deg, rgba(110, 86, 207, 0.09), transparent 68%),
         var(--panel-soft);
       color: var(--ink);
@@ -883,6 +919,7 @@ INDEX_HTML = """<!doctype html>
     .recap-button:hover {
       transform: translateY(-1px);
       border-color: var(--violet-line);
+      box-shadow: var(--shadow-float);
     }
     .recap-cell {
       display: grid;
@@ -910,7 +947,9 @@ INDEX_HTML = """<!doctype html>
     .recap-card {
       border: 1px solid var(--line);
       border-radius: 10px;
-      background: var(--panel-soft);
+      background:
+        linear-gradient(150deg, color-mix(in srgb, var(--shine) 16%, transparent), transparent 38%),
+        var(--panel-soft);
       padding: 12px;
       display: grid;
       gap: 4px;
@@ -989,7 +1028,12 @@ INDEX_HTML = """<!doctype html>
       display: grid;
       grid-template-rows: auto 1fr;
       overflow: hidden;
-      transition: background-color .22s ease, border-color .22s ease, box-shadow .22s ease;
+      transition: background-color .22s ease, border-color .22s ease, box-shadow .22s ease, transform .18s ease;
+    }
+    .calendar-day:hover {
+      border-color: var(--violet-line);
+      box-shadow: 0 12px 28px rgba(20, 41, 61, 0.08);
+      transform: translateY(-1px);
     }
     .calendar-head {
       padding: 12px;
@@ -1033,14 +1077,17 @@ INDEX_HTML = """<!doctype html>
       border-left: 4px solid var(--accent);
       border-radius: 10px;
       padding: 10px;
-      background: var(--panel);
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--shine) 16%, transparent), transparent 36%),
+        var(--panel);
       cursor: grab;
       transform-origin: center center;
       transition: transform .16s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease, opacity .18s ease, filter .18s ease;
     }
     .agenda-item:hover {
-      box-shadow: 0 10px 24px rgba(17, 27, 39, 0.08);
-      transform: translateY(-1px);
+      box-shadow: var(--shadow-float);
+      transform: translateY(-2px);
+      border-color: var(--violet-line);
     }
     .agenda-item.dragging {
       opacity: 0.96;
@@ -1289,8 +1336,10 @@ INDEX_HTML = """<!doctype html>
       cursor: not-allowed;
     }
     .drop-target {
-      box-shadow: inset 0 0 0 2px #6d97bf;
-      background: #f5faff;
+      box-shadow: inset 0 0 0 2px var(--violet), 0 14px 32px color-mix(in srgb, var(--violet) 16%, transparent);
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--violet-soft) 74%, transparent), transparent 70%),
+        var(--panel-soft);
       transform: scale(1.01);
       transition: box-shadow .16s ease, background-color .16s ease, transform .16s ease;
     }
@@ -1303,7 +1352,9 @@ INDEX_HTML = """<!doctype html>
     .week-card {
       border: 1px solid var(--line);
       border-radius: 10px;
-      background: var(--panel);
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--shine) 14%, transparent), transparent 34%),
+        var(--panel);
       color: var(--ink);
       padding: 14px;
     }
@@ -1568,8 +1619,10 @@ INDEX_HTML = """<!doctype html>
       align-items: center;
       justify-content: center;
       padding: 24px;
-      background: rgba(9, 14, 20, 0.28);
-      backdrop-filter: blur(6px);
+      background:
+        radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--violet) 20%, transparent), transparent 34%),
+        rgba(9, 14, 20, 0.46);
+      backdrop-filter: blur(8px);
       z-index: 12000;
       opacity: 0;
       transition: opacity .16s ease;
@@ -1584,8 +1637,10 @@ INDEX_HTML = """<!doctype html>
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 16px;
-      background: var(--panel);
-      box-shadow: 0 24px 56px rgba(12, 18, 28, 0.28);
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--shine) 22%, transparent), transparent 34%),
+        var(--panel);
+      box-shadow: 0 34px 90px rgba(5, 12, 20, 0.34);
       padding: 20px;
       display: grid;
       gap: 14px;
@@ -2477,6 +2532,9 @@ INDEX_HTML = """<!doctype html>
       root.style.setProperty('--sidebar-muted-strong', rgba(sidebarInk, 0.68));
       root.style.setProperty('--sidebar-foot', rgba(sidebarInk, 0.58));
       root.style.setProperty('--shadow', isDark ? '0 16px 40px rgba(0, 0, 0, 0.34)' : '0 12px 34px rgba(20, 41, 61, 0.08)');
+      root.style.setProperty('--shadow-float', isDark ? '0 22px 54px rgba(0, 0, 0, 0.42)' : '0 18px 46px rgba(20, 41, 61, 0.14)');
+      root.style.setProperty('--shine', isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.62)');
+      root.style.setProperty('--shine-soft', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.28)');
 
       els.primaryColor.value = theme.primary;
       els.secondaryColor.value = theme.secondary;
