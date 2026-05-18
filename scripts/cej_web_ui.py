@@ -227,6 +227,9 @@ def handle_create(payload: dict) -> dict:
     ]
     if comment:
         cmd.extend(["--comment", comment])
+    status = str(payload.get("status", "not_started")).strip()
+    if status:
+        cmd.extend(["--status", status])
 
     response = run_script(cmd)
     if response["ok"]:
@@ -834,6 +837,29 @@ INDEX_HTML = """<!doctype html>
       overflow-x: auto;
       padding-bottom: 4px;
     }
+    .view-tabs, .filter-tabs, .date-choice-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .view-tabs {
+      margin: 4px 0 14px;
+    }
+    .tab-btn, .date-choice {
+      border: 1px solid var(--line);
+      background: var(--panel-soft-2);
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .tab-btn.active, .date-choice.active {
+      background: var(--accent);
+      color: var(--accent-contrast);
+      border-color: transparent;
+    }
     .calendar-day {
       min-height: 260px;
       border: 1px solid var(--line);
@@ -914,6 +940,15 @@ INDEX_HTML = """<!doctype html>
       border-left-color: #c07a11;
       background: var(--surface-warn);
     }
+    .agenda-item.syncing {
+      opacity: 0.78;
+      border-style: dashed;
+    }
+    .agenda-item.sync-error {
+      border-left-color: var(--danger);
+      border-color: #e5aaaa;
+      background: var(--danger-soft);
+    }
     .agenda-item.in_progress {
       border-left-color: #0e67a5;
       background: var(--surface-info);
@@ -932,6 +967,74 @@ INDEX_HTML = """<!doctype html>
       color: var(--ink);
       font-size: 13px;
       line-height: 1.35;
+    }
+    .sync-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .sync-row.error {
+      color: var(--danger);
+    }
+    .sync-row .mini-btn {
+      padding: 4px 7px;
+    }
+    .list-panel {
+      display: none;
+      margin-top: 14px;
+    }
+    .list-panel.active {
+      display: grid;
+      gap: 10px;
+    }
+    .calendar.hidden-view {
+      display: none;
+    }
+    .action-list {
+      display: grid;
+      gap: 8px;
+    }
+    .action-row {
+      display: grid;
+      grid-template-columns: 120px minmax(220px, 1fr) 170px 120px;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 11px 12px;
+    }
+    .action-row.sync-error {
+      border-color: #e5aaaa;
+      background: var(--danger-soft);
+    }
+    .action-row.syncing {
+      opacity: 0.78;
+      border-style: dashed;
+    }
+    .create-days {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .day-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .day-check input {
+      width: auto;
     }
     .meta, .analysis-summary {
       color: var(--muted);
@@ -1513,7 +1616,20 @@ INDEX_HTML = """<!doctype html>
           </div>
           <div id="agendaNotice" class="notice" style="margin-top:14px"></div>
           <div id="listSummary" class="meta" style="margin-top:8px"></div>
+          <div class="view-tabs" role="tablist" aria-label="Vue actions">
+            <button class="tab-btn active" id="agendaViewBtn" type="button">Agenda</button>
+            <button class="tab-btn" id="listViewBtn" type="button">Liste</button>
+          </div>
           <div id="calendarGrid" class="calendar" style="margin-top:14px"></div>
+          <div id="actionListPanel" class="list-panel" aria-hidden="true">
+            <div class="filter-tabs">
+              <button class="tab-btn active" data-list-filter="all" type="button">Tout</button>
+              <button class="tab-btn" data-list-filter="errors" type="button">Erreurs</button>
+              <button class="tab-btn" data-list-filter="future" type="button">A venir</button>
+              <button class="tab-btn" data-list-filter="multi" type="button">Multi-jours</button>
+            </div>
+            <div id="actionList" class="action-list"></div>
+          </div>
           <div id="analysisSummary" class="analysis-summary" style="margin-top:18px"></div>
           <div id="weeksGrid" class="week-grid"></div>
         </div>
@@ -1664,6 +1780,68 @@ INDEX_HTML = """<!doctype html>
     <button id="yokiBubbleBtn" class="yoki-bubble" type="button" aria-label="Ouvrir Yoki">Y</button>
   </div>
   <div id="contextMenu" class="context-menu" aria-hidden="true"></div>
+  <div id="createModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h3>Nouvelle action</h3>
+          <p>Creation rapide depuis l'agenda.</p>
+        </div>
+        <button id="closeCreateModalBtn" class="icon-btn" type="button" aria-label="Fermer">×</button>
+      </div>
+      <div>
+        <label for="createTitle">Titre</label>
+        <input id="createTitle" type="text">
+      </div>
+      <div>
+        <label for="createComment">Description</label>
+        <textarea id="createComment"></textarea>
+      </div>
+      <div class="row">
+        <div>
+          <label for="createQualification">Categorie</label>
+          <select id="createQualification">
+            <option>EMPLOI</option>
+            <option>PROJET_PROFESSIONNEL</option>
+            <option>CULTURE_SPORT_LOISIRS</option>
+            <option>CITOYENNETE</option>
+            <option>FORMATION</option>
+            <option>LOGEMENT</option>
+            <option>SANTE</option>
+          </select>
+        </div>
+        <div>
+          <label for="createStatus">Statut</label>
+          <select id="createStatus">
+            <option value="done">done</option>
+            <option value="not_started">not_started</option>
+            <option value="in_progress">in_progress</option>
+            <option value="canceled">canceled</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>Jour</label>
+        <div id="createDateChoices" class="date-choice-grid"></div>
+      </div>
+      <div style="margin-top:10px">
+        <label style="display:flex;align-items:center;gap:10px;margin:0;text-transform:none;letter-spacing:0;color:var(--ink);font-size:14px;font-weight:600;">
+          <input id="createMultiDay" type="checkbox" style="width:auto;">
+          Creer sur plusieurs jours
+        </label>
+        <div id="createMultiDays" class="create-days"></div>
+      </div>
+      <div style="margin-top:10px">
+        <label for="createOtherDate">Autre date</label>
+        <input id="createOtherDate" type="date">
+      </div>
+      <div id="createNotice" class="notice"></div>
+      <div class="actions">
+        <button id="saveCreateBtn" class="primary" type="button">Creer</button>
+        <button id="cancelCreateBtn" class="ghost" type="button">Annuler</button>
+      </div>
+    </div>
+  </div>
   <div id="editModal" class="modal-overlay" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-head">
@@ -1762,6 +1940,10 @@ INDEX_HTML = """<!doctype html>
       weeksGrid: document.getElementById('weeksGrid'),
       weekLabel: document.getElementById('weekLabel'),
       calendarGrid: document.getElementById('calendarGrid'),
+      agendaViewBtn: document.getElementById('agendaViewBtn'),
+      listViewBtn: document.getElementById('listViewBtn'),
+      actionListPanel: document.getElementById('actionListPanel'),
+      actionList: document.getElementById('actionList'),
       summaryWeekCount: document.getElementById('summaryWeekCount'),
       summaryHours: document.getElementById('summaryHours'),
       summaryActions: document.getElementById('summaryActions'),
@@ -1772,6 +1954,16 @@ INDEX_HTML = """<!doctype html>
       secondaryColor: document.getElementById('secondaryColor'),
       primaryPreview: document.getElementById('primaryPreview'),
       secondaryPreview: document.getElementById('secondaryPreview'),
+      createModal: document.getElementById('createModal'),
+      createTitle: document.getElementById('createTitle'),
+      createComment: document.getElementById('createComment'),
+      createQualification: document.getElementById('createQualification'),
+      createStatus: document.getElementById('createStatus'),
+      createDateChoices: document.getElementById('createDateChoices'),
+      createMultiDay: document.getElementById('createMultiDay'),
+      createMultiDays: document.getElementById('createMultiDays'),
+      createOtherDate: document.getElementById('createOtherDate'),
+      createNotice: document.getElementById('createNotice'),
       editModal: document.getElementById('editModal'),
       editTitle: document.getElementById('editTitle'),
       editComment: document.getElementById('editComment'),
@@ -1801,6 +1993,9 @@ INDEX_HTML = """<!doctype html>
     };
     let clipboard = null;
     let contextMenuState = null;
+    let activeView = 'agenda';
+    let activeListFilter = 'all';
+    let creatingDate = null;
     let editingAction = null;
     let deletingAction = null;
     let pendingAgentSuggestion = null;
@@ -2221,7 +2416,9 @@ INDEX_HTML = """<!doctype html>
     function applyUnauthorizedState(result) {
       if (!looksUnauthorized(result)) return;
       updateSession({ connected: false });
+      currentActions = [];
       els.calendarGrid.innerHTML = '';
+      els.actionList.innerHTML = '';
       els.listSummary.textContent = '';
       renderAnalysis(null);
       els.summaryActions.textContent = '0';
@@ -2256,6 +2453,68 @@ INDEX_HTML = """<!doctype html>
         .replace(/[\\u0300-\\u036f]/g, '')
         .toLowerCase()
         .trim();
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function makeClientId() {
+      return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    function actionDateValue(action) {
+      return normalizeActionDate(action) || action.localDue || '';
+    }
+
+    function makeLocalAction(payload, due, extra = {}) {
+      return {
+        id: extra.id || makeClientId(),
+        clientId: extra.clientId || makeClientId(),
+        content: payload.title || '',
+        comment: payload.comment || '',
+        status: payload.status || 'done',
+        dateEcheance: `${due}T12:00:00.000Z`,
+        localDue: due,
+        qualification: { code: payload.qualification || 'EMPLOI' },
+        syncState: extra.syncState || 'syncing',
+        syncError: extra.syncError || '',
+        syncAction: extra.syncAction || 'create',
+        syncPayload: { ...payload, due },
+        previousDue: extra.previousDue || '',
+        multiGroupId: extra.multiGroupId || '',
+        multiCount: extra.multiCount || 0,
+      };
+    }
+
+    function replaceAction(localId, replacement) {
+      const index = currentActions.findIndex(action => action.id === localId || action.clientId === localId);
+      if (index >= 0) currentActions[index] = replacement;
+    }
+
+    function findActionByAnyId(id) {
+      return currentActions.find(action => action.id === id || action.clientId === id);
+    }
+
+    function updateLiveViews() {
+      renderCalendarFromActions();
+      renderActionList();
+      updateSummaryFromActions();
+    }
+
+    function updateSummaryFromActions() {
+      const visibleActions = currentActions.filter(action => action.syncState !== 'deleted');
+      const estimatedHours = visibleActions.length * hoursPerAction;
+      const missingHours = Math.max(0, weeklyTargetHours - estimatedHours);
+      els.listSummary.textContent = `${visibleActions.length} action(s) sur la semaine affichee.`;
+      els.summaryActions.textContent = String(visibleActions.length);
+      els.summaryHours.textContent = `${estimatedHours}h`;
+      els.summaryMissing.textContent = `${missingHours}h`;
     }
 
     function findActionCandidates(query) {
@@ -2591,6 +2850,7 @@ INDEX_HTML = """<!doctype html>
     }
 
     function cloneActionForClipboard(action, mode) {
+      if (action.syncState === 'syncing' || action.syncState === 'error') return;
       clipboard = {
         mode,
         action: {
@@ -2602,6 +2862,29 @@ INDEX_HTML = """<!doctype html>
         },
       };
       els.listSummary.textContent = `${els.listSummary.textContent} | Presse "Coller ici" sur un jour pour ${mode === 'cut' ? 'deplacer' : 'copier'} l'action.`;
+    }
+
+    function syncStatusPill(action) {
+      if (action.syncState === 'syncing') return '<span class="pill">Synchronisation...</span>';
+      if (action.syncState === 'error') return '<span class="pill status-canceled">Non synchronise</span>';
+      return '';
+    }
+
+    function multiDayPill(action) {
+      if (!action.multiGroupId || !action.multiCount || action.multiCount < 2) return '';
+      return `<span class="pill">${action.multiCount} jours</span>`;
+    }
+
+    function syncControls(action) {
+      if (action.syncState !== 'error') return '';
+      const message = escapeHtml(action.syncError || 'Erreur de synchronisation.');
+      return `
+        <div class="sync-row error">
+          <span>${message}</span>
+          <button class="mini-btn retry-sync" type="button" data-action-id="${escapeHtml(action.id)}">Reessayer</button>
+          <button class="mini-btn cancel-sync" type="button" data-action-id="${escapeHtml(action.id)}">Annuler</button>
+        </div>
+      `;
     }
 
     function hideContextMenu() {
@@ -2662,30 +2945,20 @@ INDEX_HTML = """<!doctype html>
     async function pasteToDate(targetDate) {
       if (!clipboard) return;
       if (clipboard.mode === 'cut') {
-        const result = await api('/api/update-action', {
-          id: clipboard.action.id,
-          due: targetDate,
-        });
-        setNotice(els.agendaNotice, result.ok, result.ok ? 'Action deplacee.' : (result?.error || 'Echec du deplacement.'));
-        if (result.ok) {
-          clipboard = null;
-          await loadCurrentWeek(false);
-        }
+        await moveActionOptimistic(clipboard.action.id, targetDate);
+        clipboard = null;
         return;
       }
 
-      const result = await api('/api/duplicate-action', {
+      const payload = {
         title: clipboard.action.content,
         comment: clipboard.action.comment,
         due: targetDate,
         qualification: clipboard.action.qualification,
         status: clipboard.action.status,
-      });
-      setNotice(els.agendaNotice, result.ok, result.ok ? 'Action collee.' : (result?.error || 'Echec du collage.'));
-      if (result.ok) {
-        clipboard = null;
-        await loadCurrentWeek(false);
-      }
+      };
+      clipboard = null;
+      await createActionsOptimistic([payload]);
     }
 
     async function moveActionByQuery(query, targetDate) {
@@ -2714,15 +2987,122 @@ INDEX_HTML = """<!doctype html>
     }
 
     async function createActionFromAgent(action) {
-      const result = await api('/api/create', {
+      await createActionsOptimistic([{
         title: action?.title || action?.content || '',
         comment: action?.comment || '',
         due: action?.due || action?.date || formatDateInput(selectedWeekStart),
         qualification: action?.qualification || 'EMPLOI',
-      });
-      if (!result.ok) return { ok: false, error: result?.error || 'Echec de creation.' };
-      await loadCurrentWeek(false);
+        status: action?.status || 'done',
+      }]);
       return { ok: true, message: 'Action creee.' };
+    }
+
+    async function createActionsOptimistic(payloads) {
+      const groupId = payloads.length > 1 ? makeClientId() : '';
+      const locals = payloads.map(payload => makeLocalAction(payload, payload.due, {
+        multiGroupId: groupId,
+        multiCount: payloads.length,
+      }));
+      currentActions = [...currentActions, ...locals];
+      updateLiveViews();
+      setNotice(els.agendaNotice, true, payloads.length > 1 ? 'Actions ajoutees, synchronisation en cours.' : 'Action ajoutee, synchronisation en cours.');
+      const results = await Promise.all(locals.map(action => syncCreateAction(action)));
+      if (results.every(Boolean)) await loadCurrentWeek(false);
+    }
+
+    async function syncCreateAction(localAction) {
+      const result = await api('/api/create', localAction.syncPayload);
+      applyUnauthorizedState(result);
+      if (!result.ok) {
+        const action = findActionByAnyId(localAction.id);
+        if (action) {
+          action.syncState = 'error';
+          action.syncError = result?.error || 'Creation impossible.';
+        }
+        updateLiveViews();
+        return false;
+      }
+      const action = findActionByAnyId(localAction.id);
+      if (action) {
+        action.syncState = '';
+        action.syncError = '';
+      }
+      setNotice(els.agendaNotice, true, 'Synchronisation terminee.');
+      updateLiveViews();
+      return true;
+    }
+
+    async function moveActionOptimistic(actionId, targetDate) {
+      const action = findActionByAnyId(actionId);
+      if (!action || action.syncState === 'syncing') return;
+      const previousDue = actionDateValue(action);
+      action.previousDue = previousDue;
+      action.localDue = targetDate;
+      action.dateEcheance = `${targetDate}T12:00:00.000Z`;
+      action.syncState = 'syncing';
+      action.syncError = '';
+      action.syncAction = 'move';
+      action.syncPayload = { id: action.id, due: targetDate };
+      updateLiveViews();
+
+      const result = await api('/api/update-action', { id: action.id, due: targetDate });
+      applyUnauthorizedState(result);
+      const live = findActionByAnyId(action.id);
+      if (!live) return;
+      if (!result.ok) {
+        live.syncState = 'error';
+        live.syncError = result?.error || 'Deplacement impossible.';
+        live.syncAction = 'move';
+        live.previousDue = previousDue;
+        updateLiveViews();
+        return;
+      }
+      live.syncState = '';
+      live.syncError = '';
+      setNotice(els.agendaNotice, true, 'Action deplacee.');
+      updateLiveViews();
+    }
+
+    async function retrySyncAction(actionId) {
+      const action = findActionByAnyId(actionId);
+      if (!action) return;
+      action.syncState = 'syncing';
+      action.syncError = '';
+      updateLiveViews();
+      if (action.syncAction === 'move') {
+        const targetDate = action.localDue || actionDateValue(action);
+        const result = await api('/api/update-action', { id: action.id, due: targetDate });
+        applyUnauthorizedState(result);
+        const live = findActionByAnyId(action.id);
+        if (!live) return;
+        if (!result.ok) {
+          live.syncState = 'error';
+          live.syncError = result?.error || 'Deplacement impossible.';
+        } else {
+          live.syncState = '';
+          live.syncError = '';
+          setNotice(els.agendaNotice, true, 'Action synchronisee.');
+        }
+        updateLiveViews();
+        return;
+      }
+      const ok = await syncCreateAction(action);
+      if (ok) await loadCurrentWeek(false);
+    }
+
+    function cancelSyncAction(actionId) {
+      const action = findActionByAnyId(actionId);
+      if (!action) return;
+      if (action.syncAction === 'move' && action.previousDue) {
+        action.localDue = action.previousDue;
+        action.dateEcheance = `${action.previousDue}T12:00:00.000Z`;
+        action.syncState = '';
+        action.syncError = '';
+      } else {
+        currentActions = currentActions.filter(item => item.id !== action.id && item.clientId !== action.clientId);
+      }
+      updateLiveViews();
+      setNotice(els.agendaNotice, true, 'Action locale annulee.');
     }
 
     async function deleteActionByQuery(query) {
@@ -2752,25 +3132,85 @@ INDEX_HTML = """<!doctype html>
       openModal(els.deleteModal);
     }
 
-    async function quickCreateAction() {
-      const title = window.prompt('Titre de l’action', '');
-      if (title === null || !title.trim()) return;
-      const comment = window.prompt('Commentaire', '');
-      if (comment === null) return;
-      const due = window.prompt('Date (YYYY-MM-DD)', formatDateInput(selectedWeekStart));
-      if (due === null || !due.trim()) return;
-      const qualification = window.prompt('Categorie', 'EMPLOI');
-      if (qualification === null || !qualification.trim()) return;
-
-      const result = await api('/api/create', {
-        title,
-        comment,
-        due,
-        qualification,
+    function weekDateChoices() {
+      return Array.from({ length: 7 }, (_, index) => {
+        const date = addDays(selectedWeekStart, index);
+        return { label: weekdayNames[index], value: formatDateInput(date), short: date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) };
       });
-      setNotice(els.agendaNotice, result.ok, result.ok ? 'Action creee.' : (result?.error || 'Echec de creation.'));
-      if (result.ok) await loadCurrentWeek(false);
-      applyUnauthorizedState(result);
+    }
+
+    function renderCreateDateControls(selectedDate) {
+      const choices = weekDateChoices();
+      els.createDateChoices.innerHTML = '';
+      els.createMultiDays.innerHTML = '';
+      for (const choice of choices) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `date-choice${choice.value === selectedDate ? ' active' : ''}`;
+        button.textContent = `${choice.label} ${choice.short}`;
+        button.dataset.date = choice.value;
+        button.addEventListener('click', () => {
+          creatingDate = choice.value;
+          els.createOtherDate.value = choice.value;
+          renderCreateDateControls(choice.value);
+        });
+        els.createDateChoices.appendChild(button);
+
+        const label = document.createElement('label');
+        label.className = 'day-check';
+        label.innerHTML = `<input type="checkbox" value="${choice.value}"> ${choice.label}`;
+        const input = label.querySelector('input');
+        input.checked = choice.value === selectedDate;
+        els.createMultiDays.appendChild(label);
+      }
+    }
+
+    function openCreateModal(targetDate = formatDateInput(selectedWeekStart)) {
+      creatingDate = targetDate;
+      els.createTitle.value = '';
+      els.createComment.value = '';
+      els.createQualification.value = 'EMPLOI';
+      els.createStatus.value = 'done';
+      els.createOtherDate.value = targetDate;
+      els.createMultiDay.checked = false;
+      renderCreateDateControls(targetDate);
+      els.createMultiDays.style.display = 'none';
+      setNotice(els.createNotice, true, '');
+      openModal(els.createModal);
+      setTimeout(() => els.createTitle.focus(), 0);
+    }
+
+    function selectedCreateDates() {
+      if (els.createMultiDay.checked) {
+        const values = Array.from(els.createMultiDays.querySelectorAll('input:checked')).map(input => input.value);
+        return values.length ? values : [creatingDate || els.createOtherDate.value];
+      }
+      return [els.createOtherDate.value || creatingDate || formatDateInput(selectedWeekStart)];
+    }
+
+    async function submitCreateModal() {
+      const title = els.createTitle.value.trim();
+      if (!title) {
+        setNotice(els.createNotice, false, 'Titre requis.');
+        return;
+      }
+      const basePayload = {
+        title,
+        comment: els.createComment.value.trim(),
+        qualification: els.createQualification.value,
+        status: els.createStatus.value || 'done',
+      };
+      const dates = selectedCreateDates().filter(Boolean);
+      if (!dates.length) {
+        setNotice(els.createNotice, false, 'Date requise.');
+        return;
+      }
+      closeModal(els.createModal);
+      await createActionsOptimistic(dates.map(due => ({ ...basePayload, due })));
+    }
+
+    async function quickCreateAction() {
+      openCreateModal(formatDateInput(selectedWeekStart));
     }
 
     async function executeAgentCommand(command) {
@@ -3074,6 +3514,10 @@ INDEX_HTML = """<!doctype html>
       event.stopPropagation();
       showContextMenu(event.clientX, event.clientY, [
         {
+          label: 'Creer une action ici',
+          onClick: () => openCreateModal(targetDate),
+        },
+        {
           label: clipboard ? 'Coller ici' : 'Coller ici (vide)',
           disabled: !clipboard,
           onClick: () => pasteToDate(targetDate),
@@ -3082,16 +3526,20 @@ INDEX_HTML = """<!doctype html>
     }
 
     function renderCalendar(data) {
+      currentActions = Array.isArray(data?.actions) ? data.actions : [];
+      updateLiveViews();
+    }
+
+    function renderCalendarFromActions() {
       els.calendarGrid.innerHTML = '';
-      const actions = Array.isArray(data?.actions) ? data.actions : [];
-      currentActions = actions;
+      const actions = currentActions.filter(action => action.syncState !== 'deleted');
       const buckets = new Map();
       for (let i = 0; i < 7; i++) {
         const day = addDays(selectedWeekStart, i);
         buckets.set(formatDateInput(day), []);
       }
       for (const action of actions) {
-        const key = normalizeActionDate(action);
+        const key = actionDateValue(action);
         if (key && buckets.has(key)) buckets.get(key).push(action);
       }
 
@@ -3104,12 +3552,15 @@ INDEX_HTML = """<!doctype html>
           <div class="calendar-head">
             <strong>${weekdayNames[i]}</strong>
             <span>${day.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>
-            <button class="ghost mini-btn" type="button">Coller ici</button>
+            <button class="ghost mini-btn create-day-btn" type="button">Creer</button>
           </div>
           <div class="calendar-body"></div>
         `;
         const body = column.querySelector('.calendar-body');
-        column.querySelector('button').addEventListener('click', () => pasteToDate(key));
+        column.querySelector('button').addEventListener('click', () => openCreateModal(key));
+        column.addEventListener('dblclick', event => {
+          if (!event.target.closest('.agenda-item, button')) openCreateModal(key);
+        });
         column.addEventListener('contextmenu', event => openDayContextMenu(event, key));
         body.addEventListener('contextmenu', event => openDayContextMenu(event, key));
         body.addEventListener('dragover', event => {
@@ -3123,9 +3574,7 @@ INDEX_HTML = """<!doctype html>
           const raw = event.dataTransfer.getData('application/json');
           if (!raw) return;
           const dragged = JSON.parse(raw);
-          const result = await api('/api/update-action', { id: dragged.id, due: key });
-          setNotice(els.agendaNotice, result.ok, result.ok ? 'Action deplacee.' : (result?.error || 'Echec du deplacement.'));
-          if (result.ok) await loadCurrentWeek(false);
+          await moveActionOptimistic(dragged.id, key);
         });
         const items = buckets.get(key) || [];
         if (!items.length) {
@@ -3136,10 +3585,14 @@ INDEX_HTML = """<!doctype html>
         } else {
           for (const action of items) {
             const node = document.createElement('article');
-            node.className = `agenda-item${action.status && action.status !== 'done' ? ' ' + action.status : ''}${action.status === 'not_started' ? ' pending' : ''}`;
-            node.draggable = true;
+            node.className = `agenda-item${action.status && action.status !== 'done' ? ' ' + action.status : ''}${action.status === 'not_started' ? ' pending' : ''}${action.syncState === 'syncing' ? ' syncing' : ''}${action.syncState === 'error' ? ' sync-error' : ''}`;
+            node.draggable = action.syncState !== 'syncing';
             node.addEventListener('contextmenu', event => openActionContextMenu(event, action));
             node.addEventListener('dragstart', event => {
+              if (action.syncState === 'syncing') {
+                event.preventDefault();
+                return;
+              }
               node.classList.add('dragging');
               event.dataTransfer.setData('application/json', JSON.stringify({ id: action.id }));
             });
@@ -3149,30 +3602,74 @@ INDEX_HTML = """<!doctype html>
               <div class="agenda-tags">
                 ${categoryPill(action)}
                 ${statusPill(action)}
+                ${syncStatusPill(action)}
+                ${multiDayPill(action)}
               </div>
-              <strong>${action.content || '(sans titre)'}</strong>
-              ${action.comment ? `<p>${action.comment}</p>` : ''}
-              <div class="meta">${action.dateFinReelle || action.dateEcheance || ''}${qualif ? ' | ' + qualif : ''}</div>
+              <strong>${escapeHtml(action.content || '(sans titre)')}</strong>
+              ${action.comment ? `<p>${escapeHtml(action.comment)}</p>` : ''}
+              <div class="meta">${escapeHtml(actionDateValue(action) || action.dateFinReelle || action.dateEcheance || '')}${qualif ? ' | ' + escapeHtml(qualif) : ''}</div>
+              ${syncControls(action)}
             `;
             body.appendChild(node);
           }
         }
         els.calendarGrid.appendChild(column);
       }
-      els.listSummary.textContent = `${actions.length} action(s) sur la semaine affichee.`;
-      const estimatedHours = actions.length * hoursPerAction;
-      const missingHours = Math.max(0, weeklyTargetHours - estimatedHours);
-      els.summaryActions.textContent = String(actions.length);
-      els.summaryHours.textContent = `${estimatedHours}h`;
-      els.summaryMissing.textContent = `${missingHours}h`;
+    }
+
+    function renderActionList() {
+      const today = new Date().toISOString().slice(0, 10);
+      let actions = currentActions.filter(action => action.syncState !== 'deleted');
+      if (activeListFilter === 'errors') actions = actions.filter(action => action.syncState === 'error');
+      if (activeListFilter === 'future') actions = actions.filter(action => actionDateValue(action) >= today);
+      if (activeListFilter === 'multi') actions = actions.filter(action => action.multiGroupId);
+
+      els.actionList.innerHTML = '';
+      if (!actions.length) {
+        const empty = document.createElement('div');
+        empty.className = 'calendar-empty';
+        empty.textContent = 'Aucune action dans cette vue.';
+        els.actionList.appendChild(empty);
+        return;
+      }
+
+      for (const action of actions.slice().sort((a, b) => actionDateValue(a).localeCompare(actionDateValue(b)))) {
+        const row = document.createElement('div');
+        row.className = `action-row${action.syncState === 'syncing' ? ' syncing' : ''}${action.syncState === 'error' ? ' sync-error' : ''}`;
+        row.innerHTML = `
+          <div><strong>${escapeHtml(actionDateValue(action) || '-')}</strong></div>
+          <div>
+            <strong>${escapeHtml(action.content || '(sans titre)')}</strong>
+            ${action.comment ? `<div class="meta">${escapeHtml(action.comment)}</div>` : ''}
+            ${syncControls(action)}
+          </div>
+          <div class="agenda-tags">
+            ${categoryPill(action)}
+            ${multiDayPill(action)}
+          </div>
+          <div class="agenda-tags">
+            ${statusPill(action) || '<span class="pill">done</span>'}
+            ${syncStatusPill(action)}
+          </div>
+        `;
+        els.actionList.appendChild(row);
+      }
+    }
+
+    function setActiveView(view) {
+      activeView = view;
+      els.agendaViewBtn.classList.toggle('active', view === 'agenda');
+      els.listViewBtn.classList.toggle('active', view === 'list');
+      els.calendarGrid.classList.toggle('hidden-view', view !== 'agenda');
+      els.actionListPanel.classList.toggle('active', view === 'list');
+      els.actionListPanel.setAttribute('aria-hidden', view === 'list' ? 'false' : 'true');
+      renderActionList();
     }
 
     function renderAnalysis(analysis) {
       els.weeksGrid.innerHTML = '';
       if (!analysis) {
         els.analysisSummary.textContent = '';
-        els.summaryHours.textContent = '0';
-        els.summaryMissing.textContent = '0';
         return;
       }
       els.analysisSummary.textContent = `Semaines analysees: ${analysis.weeks_total} | semaines sans action: ${analysis.weeks_missing_actions} | heures qualifiees: ${analysis.qualified_hours_total}`;
@@ -3213,6 +3710,7 @@ INDEX_HTML = """<!doctype html>
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
         hideContextMenu();
+        closeModal(els.createModal);
         closeModal(els.editModal);
         closeModal(els.deleteModal);
       }
@@ -3224,6 +3722,21 @@ INDEX_HTML = """<!doctype html>
     });
     els.deleteModal.addEventListener('click', event => {
       if (event.target === els.deleteModal) closeModal(els.deleteModal);
+    });
+    els.createModal.addEventListener('click', event => {
+      if (event.target === els.createModal) closeModal(els.createModal);
+    });
+    els.calendarGrid.addEventListener('click', event => {
+      const retry = event.target.closest('.retry-sync');
+      const cancel = event.target.closest('.cancel-sync');
+      if (retry) retrySyncAction(retry.dataset.actionId);
+      if (cancel) cancelSyncAction(cancel.dataset.actionId);
+    });
+    els.actionList.addEventListener('click', event => {
+      const retry = event.target.closest('.retry-sync');
+      const cancel = event.target.closest('.cancel-sync');
+      if (retry) retrySyncAction(retry.dataset.actionId);
+      if (cancel) cancelSyncAction(cancel.dataset.actionId);
     });
 
     document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -3252,6 +3765,16 @@ INDEX_HTML = """<!doctype html>
       const result = await api('/api/logout', {});
       setNotice(els.loginNotice, result.ok, result.ok ? 'Session locale supprimee.' : (result?.error || 'Echec de deconnexion.'));
       if (result.session) updateSession(result.session);
+    });
+    document.getElementById('closeCreateModalBtn').addEventListener('click', () => closeModal(els.createModal));
+    document.getElementById('cancelCreateBtn').addEventListener('click', () => closeModal(els.createModal));
+    document.getElementById('saveCreateBtn').addEventListener('click', submitCreateModal);
+    els.createOtherDate.addEventListener('change', () => {
+      creatingDate = els.createOtherDate.value || creatingDate;
+      renderCreateDateControls(creatingDate);
+    });
+    els.createMultiDay.addEventListener('change', () => {
+      els.createMultiDays.style.display = els.createMultiDay.checked ? 'grid' : 'none';
     });
     document.getElementById('closeEditModalBtn').addEventListener('click', () => closeModal(els.editModal));
     document.getElementById('cancelEditBtn').addEventListener('click', () => closeModal(els.editModal));
@@ -3319,6 +3842,15 @@ INDEX_HTML = """<!doctype html>
     document.getElementById('listBtn').addEventListener('click', async () => {
       switchSection('agendaSection');
       await loadCurrentWeek(false);
+    });
+    els.agendaViewBtn.addEventListener('click', () => setActiveView('agenda'));
+    els.listViewBtn.addEventListener('click', () => setActiveView('list'));
+    document.querySelectorAll('[data-list-filter]').forEach(button => {
+      button.addEventListener('click', () => {
+        activeListFilter = button.dataset.listFilter;
+        document.querySelectorAll('[data-list-filter]').forEach(item => item.classList.toggle('active', item === button));
+        renderActionList();
+      });
     });
 
     document.getElementById('analyzeBtn').addEventListener('click', async () => {
