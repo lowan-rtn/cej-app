@@ -19,6 +19,7 @@ DELETE_SCRIPT = ROOT / "delete_cej_action.py"
 SESSION_FILE = Path.home() / ".config" / "pass_emploi" / "session.json"
 REMEMBER_FILE = Path.home() / ".config" / "pass_emploi" / "remembered_login.json"
 THEME_FILE = Path.home() / ".config" / "pass_emploi" / "theme.json"
+FIXED_THEME = {"darkMode": True, "primary": "#10233f", "secondary": "#9d4edd"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -241,18 +242,7 @@ def handle_create(payload: dict) -> dict:
 
 
 def handle_theme_update(payload: dict) -> dict:
-    dark_mode = bool(payload.get("darkMode"))
-    primary = payload.get("primary")
-    secondary = payload.get("secondary")
-    if not isinstance(primary, str) or not isinstance(secondary, str):
-        return {"ok": False, "error": "Couleurs invalides."}
-    normalized = {
-        "darkMode": dark_mode,
-        "primary": normalize_hex_color(primary, "#174a7c"),
-        "secondary": normalize_hex_color(secondary, "#6e56cf"),
-    }
-    persist_theme_settings(normalized)
-    return {"ok": True, "theme": normalized}
+    return {"ok": True, "theme": load_theme_settings()}
 
 
 def handle_update_action(payload: dict) -> dict:
@@ -406,19 +396,7 @@ def normalize_hex_color(value: str, fallback: str) -> str:
 
 
 def load_theme_settings() -> dict:
-    if not THEME_FILE.exists():
-        return {"darkMode": False, "primary": "#174a7c", "secondary": "#6e56cf"}
-    try:
-        data = json.loads(THEME_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {"darkMode": False, "primary": "#174a7c", "secondary": "#6e56cf"}
-    if not isinstance(data, dict):
-        return {"darkMode": False, "primary": "#174a7c", "secondary": "#6e56cf"}
-    return {
-        "darkMode": bool(data.get("darkMode")),
-        "primary": normalize_hex_color(str(data.get("primary", "#174a7c")), "#174a7c"),
-        "secondary": normalize_hex_color(str(data.get("secondary", "#6e56cf")), "#6e56cf"),
-    }
+    return dict(FIXED_THEME)
 
 
 def persist_theme_settings(theme: dict) -> None:
@@ -550,40 +528,40 @@ INDEX_HTML = """<!doctype html>
   <title>Tableau de bord CEJ</title>
   <style>
     :root {
-      --bg: #edf2f7;
-      --sidebar: #12304d;
-      --sidebar-soft: #1e456b;
+      --bg: #08111f;
+      --sidebar: #071426;
+      --sidebar-soft: #171d3d;
       --sidebar-ink: #f1f6fb;
       --sidebar-muted: rgba(241,246,251,0.72);
       --sidebar-muted-strong: rgba(241,246,251,0.68);
       --sidebar-foot: rgba(241,246,251,0.58);
-      --panel: #ffffff;
-      --panel-soft: #f9fbfd;
-      --panel-soft-2: #f4f7fa;
-      --panel-soft-3: #f6f9fc;
-      --surface-warn: #fff9ec;
-      --surface-info: #eef6fd;
-      --surface-danger: #fff1f1;
-      --surface-menu: rgba(255,255,255,0.98);
-      --ink: #17212b;
-      --muted: #617282;
-      --line: #d7e0e8;
-      --line-strong: #b8c5d1;
-      --accent: #174a7c;
-      --accent-soft: #edf4fb;
-      --accent-contrast: #ffffff;
-      --success: #0b6b61;
-      --success-soft: #edf7f5;
-      --danger: #8c1d18;
-      --danger-soft: #fbefef;
-      --violet: #6e56cf;
-      --violet-soft: #f1edff;
-      --violet-line: #d9cffb;
-      --secondary-contrast: #2f245f;
-      --shadow: 0 12px 34px rgba(20, 41, 61, 0.08);
-      --shadow-float: 0 18px 46px rgba(20, 41, 61, 0.14);
-      --shine: rgba(255,255,255,0.62);
-      --shine-soft: rgba(255,255,255,0.28);
+      --panel: #0f1b2d;
+      --panel-soft: #132238;
+      --panel-soft-2: #172a43;
+      --panel-soft-3: #1b304c;
+      --surface-warn: #2d2415;
+      --surface-info: #102a45;
+      --surface-danger: #301a22;
+      --surface-menu: rgba(15,27,45,0.96);
+      --ink: #edf3fb;
+      --muted: #9fb0c4;
+      --line: #263a56;
+      --line-strong: #38506f;
+      --accent: #10233f;
+      --accent-soft: #142948;
+      --accent-contrast: #f8fbff;
+      --success: #54d6bf;
+      --success-soft: #12352f;
+      --danger: #ff8b8b;
+      --danger-soft: #351a22;
+      --violet: #9d4edd;
+      --violet-soft: #221b3d;
+      --violet-line: #5f3ea6;
+      --secondary-contrast: #f3e8ff;
+      --shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+      --shadow-float: 0 22px 54px rgba(0, 0, 0, 0.42);
+      --shine: rgba(255,255,255,0.10);
+      --shine-soft: rgba(255,255,255,0.08);
       --radius: 14px;
     }
     * { box-sizing: border-box; }
@@ -1226,54 +1204,54 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid transparent;
     }
     .pill.status-not_started {
-      background: #fff2d9;
-      border-color: #f1d08a;
-      color: #8c6210;
+      background: rgba(241, 176, 72, 0.16);
+      border-color: rgba(241, 176, 72, 0.34);
+      color: #ffd38a;
     }
     .pill.status-in_progress {
-      background: #e8f2fd;
-      border-color: #bad6f3;
-      color: #175588;
+      background: rgba(78, 163, 255, 0.16);
+      border-color: rgba(78, 163, 255, 0.34);
+      color: #9dccff;
     }
     .pill.status-canceled {
-      background: #ffecec;
-      border-color: #efc1c1;
-      color: #8c1d18;
+      background: rgba(255, 139, 139, 0.14);
+      border-color: rgba(255, 139, 139, 0.32);
+      color: #ffb1b1;
     }
     .pill.category-EMPLOI {
-      background: #eaf3ff;
-      border-color: #c8dcf4;
-      color: #174a7c;
+      background: rgba(92, 150, 255, 0.16);
+      border-color: rgba(92, 150, 255, 0.34);
+      color: #b6d1ff;
     }
     .pill.category-CITOYENNETE {
-      background: #edf7f5;
-      border-color: #cce6e0;
-      color: #0b6b61;
+      background: rgba(84, 214, 191, 0.14);
+      border-color: rgba(84, 214, 191, 0.32);
+      color: #9ff1df;
     }
     .pill.category-FORMATION {
-      background: #f4efff;
-      border-color: #dbcef7;
-      color: #5a3aa0;
+      background: rgba(157, 78, 221, 0.18);
+      border-color: rgba(157, 78, 221, 0.38);
+      color: #dfc0ff;
     }
     .pill.category-PROJET_PROFESSIONNEL {
-      background: #fff1e8;
-      border-color: #f3d2ba;
-      color: #9a4b12;
+      background: rgba(255, 154, 90, 0.16);
+      border-color: rgba(255, 154, 90, 0.34);
+      color: #ffc09c;
     }
     .pill.category-CULTURE_SPORT_LOISIRS {
-      background: #fff3fb;
-      border-color: #efcde0;
-      color: #a63f7a;
+      background: rgba(255, 113, 206, 0.16);
+      border-color: rgba(255, 113, 206, 0.34);
+      color: #ffb8e5;
     }
     .pill.category-LOGEMENT {
-      background: #f2f4f7;
-      border-color: #d8dee6;
-      color: #4d6276;
+      background: rgba(159, 176, 196, 0.14);
+      border-color: rgba(159, 176, 196, 0.3);
+      color: #c6d2df;
     }
     .pill.category-SANTE {
-      background: #fff0f0;
-      border-color: #efcccc;
-      color: #9b2c2c;
+      background: rgba(255, 139, 139, 0.16);
+      border-color: rgba(255, 139, 139, 0.34);
+      color: #ffb1b1;
     }
     .mini-btn {
       padding: 5px 8px;
@@ -1722,7 +1700,7 @@ INDEX_HTML = """<!doctype html>
       }
     }
     body.login-only {
-      background: #e9eef5;
+      background: var(--bg);
     }
     body.login-only .app-shell {
       grid-template-columns: 1fr;
@@ -1844,30 +1822,16 @@ INDEX_HTML = """<!doctype html>
             <h2>Apparence</h2>
             <div class="theme-grid">
               <div class="theme-card">
-                <label style="display:flex;align-items:center;gap:10px;margin:0;text-transform:none;letter-spacing:0;color:var(--ink);font-size:14px;font-weight:600;">
-                  <input id="darkMode" type="checkbox" style="width:auto;">
-                  Activer le mode sombre
-                </label>
-                <div>
-                  <label for="primaryColor">Couleur principale</label>
-                  <input id="primaryColor" type="color" value="#174a7c">
-                </div>
-                <div>
-                  <label for="secondaryColor">Couleur secondaire</label>
-                  <input id="secondaryColor" type="color" value="#6e56cf">
-                </div>
-                <div class="actions">
-                  <button class="secondary" id="applyThemeBtn" type="button">Appliquer</button>
-                  <button class="ghost" id="resetThemeBtn" type="button">Reinitialiser</button>
-                </div>
+                <div class="meta">Theme fixe</div>
+                <strong>Bleu nuit et pourpre</strong>
+                <span class="muted">L'application reste en mode sombre pour garder une interface stable et lisible.</span>
               </div>
               <div class="theme-card">
                 <div class="meta">Apercu</div>
                 <div class="theme-preview">
-                  <div id="primaryPreview" class="theme-chip">Principale</div>
-                  <div id="secondaryPreview" class="theme-chip">Secondaire</div>
+                  <div class="theme-chip" style="background:var(--accent);color:var(--accent-contrast);border-color:var(--line-strong);">Bleu nuit</div>
+                  <div class="theme-chip" style="background:var(--violet);color:var(--secondary-contrast);border-color:var(--violet-line);">Pourpre</div>
                 </div>
-                <div id="themeNotice" class="notice"></div>
               </div>
             </div>
           </div>
@@ -2134,7 +2098,6 @@ INDEX_HTML = """<!doctype html>
       yokiUsageMeta: document.getElementById('yokiUsageMeta'),
       yokiLogMeta: document.getElementById('yokiLogMeta'),
       yokiSettingsNotice: document.getElementById('yokiSettingsNotice'),
-      themeNotice: document.getElementById('themeNotice'),
       listSummary: document.getElementById('listSummary'),
       analysisSummary: document.getElementById('analysisSummary'),
       weeksGrid: document.getElementById('weeksGrid'),
@@ -2164,11 +2127,6 @@ INDEX_HTML = """<!doctype html>
       summaryActions: document.getElementById('summaryActions'),
       summaryMissing: document.getElementById('summaryMissing'),
       contextMenu: document.getElementById('contextMenu'),
-      darkMode: document.getElementById('darkMode'),
-      primaryColor: document.getElementById('primaryColor'),
-      secondaryColor: document.getElementById('secondaryColor'),
-      primaryPreview: document.getElementById('primaryPreview'),
-      secondaryPreview: document.getElementById('secondaryPreview'),
       createModal: document.getElementById('createModal'),
       createTitle: document.getElementById('createTitle'),
       createComment: document.getElementById('createComment'),
@@ -2202,9 +2160,9 @@ INDEX_HTML = """<!doctype html>
     const yokiLogKey = 'cej.yoki.actionLog.v1';
     const yokiUsageKey = 'cej.yoki.usage.v1';
     const defaultTheme = {
-      darkMode: false,
-      primary: '#174a7c',
-      secondary: '#6e56cf',
+      darkMode: true,
+      primary: '#10233f',
+      secondary: '#9d4edd',
     };
     let clipboard = null;
     let contextMenuState = null;
@@ -2478,11 +2436,11 @@ INDEX_HTML = """<!doctype html>
       return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
-    function applyTheme(settings, persist = true) {
+    function applyTheme(settings = defaultTheme, persist = false) {
       const theme = {
-        darkMode: !!settings.darkMode,
-        primary: normalizeHex(settings.primary, defaultTheme.primary),
-        secondary: normalizeHex(settings.secondary, defaultTheme.secondary),
+        darkMode: true,
+        primary: defaultTheme.primary,
+        secondary: defaultTheme.secondary,
       };
       const root = document.documentElement;
       const isDark = theme.darkMode;
@@ -2536,19 +2494,7 @@ INDEX_HTML = """<!doctype html>
       root.style.setProperty('--shine', isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.62)');
       root.style.setProperty('--shine-soft', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.28)');
 
-      els.primaryColor.value = theme.primary;
-      els.secondaryColor.value = theme.secondary;
-      els.darkMode.checked = theme.darkMode;
-      els.primaryPreview.style.background = theme.primary;
-      els.primaryPreview.style.color = primaryContrast;
-      els.primaryPreview.style.borderColor = mix(theme.primary, isDark ? '#ffffff' : '#000000', isDark ? 0.18 : 0.08);
-      els.secondaryPreview.style.background = theme.secondary;
-      els.secondaryPreview.style.color = secondaryContrast;
-      els.secondaryPreview.style.borderColor = mix(theme.secondary, isDark ? '#ffffff' : '#000000', isDark ? 0.18 : 0.08);
-
-      if (persist) {
-        api('/api/theme', theme).catch(() => null);
-      }
+      return theme;
     }
 
     function startOfWeek(date) {
@@ -4192,19 +4138,6 @@ INDEX_HTML = """<!doctype html>
       setNotice(els.agendaNotice, true, 'Action supprimee.');
       await loadCurrentWeek(false);
     });
-    document.getElementById('applyThemeBtn').addEventListener('click', () => {
-      applyTheme({
-        darkMode: els.darkMode.checked,
-        primary: els.primaryColor.value,
-        secondary: els.secondaryColor.value,
-      });
-      setNotice(els.themeNotice, true, 'Apparence mise a jour.');
-    });
-    document.getElementById('resetThemeBtn').addEventListener('click', () => {
-      applyTheme(defaultTheme);
-      setNotice(els.themeNotice, true, 'Apparence reinitialisee.');
-    });
-
     async function loadCurrentWeek(withAnalysis) {
       const payload = {
         from_date: document.getElementById('fromDate').value,
@@ -4333,16 +4266,7 @@ INDEX_HTML = """<!doctype html>
 
     loadYokiState();
     refreshYokiUsage();
-
-    api('/api/theme').then(result => {
-      if (result && result.ok && result.theme) {
-        applyTheme(result.theme, false);
-      } else {
-        applyTheme(defaultTheme, false);
-      }
-    }).catch(() => {
-      applyTheme(defaultTheme, false);
-    });
+    applyTheme(defaultTheme, false);
 
     refreshSession().then(session => {
       if (session && session.connected) {
